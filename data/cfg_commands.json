@@ -1,0 +1,389 @@
+{
+  "schema": "bf6tuner.cfg_commands/1",
+  "version": "2026.09.06",
+  "file": {
+    "name": "User.cfg",
+    "placement": "Next to the game executable, in the Battlefield 6 install folder (the folder containing the game's .exe), NOT in Documents.",
+    "known_install_paths": [
+      "%ProgramFiles(x86)%\\Steam\\steamapps\\common\\Battlefield 6",
+      "%ProgramFiles%\\EA Games\\Battlefield 6",
+      "%ProgramFiles(x86)%\\EA Games\\Battlefield 6",
+      "%ProgramFiles%\\Epic Games\\Battlefield 6"
+    ],
+    "encoding": "utf-8 (no BOM), CRLF line endings, one 'Key Value' pair per line",
+    "warning": "Windows hides known file extensions by default. A file saved as User.cfg.txt does nothing. The app writes the real extension for you."
+  },
+  "confidence_levels": {
+    "documented": "Reproduced across multiple independent BF6 guides and confirmed to change behaviour in BF6.",
+    "community": "Widely circulated for BF6, but the measured effect is inconsistent or actively disputed.",
+    "legacy": "A real Frostbite console variable from BF3/BF4/BFV/2042. May be a silent no-op in BF6. Harmless if unrecognised, but do not expect a result."
+  },
+  "risk_levels": {
+    "safe": "Cannot reduce performance. Worst case it is ignored.",
+    "moderate": "Trades image quality or a feature for frames. Reversible.",
+    "high": "Can measurably reduce performance (especially 1% lows) on some hardware. Only emitted when the hardware policy says it is appropriate.",
+    "unsafe": "Can cause crashes, a black screen, or anti-cheat attention. Never emitted automatically."
+  },
+  "groups": {
+    "cpu_threading": "CPU worker-thread and core-count overrides",
+    "render_pipeline": "Render device, queueing and presentation",
+    "frame_pacing": "Frame rate limiting and sync",
+    "post_process": "Post-processing effects that cost frames and hurt target acquisition",
+    "world_render": "World/lighting/shadow renderer knobs",
+    "overlay": "On-screen performance telemetry",
+    "misc": "Everything else"
+  },
+  "commands": [
+    {
+      "key": "Thread.ProcessorCount",
+      "group": "cpu_threading",
+      "type": "int", "min": 1, "max": 64,
+      "confidence": "community", "risk": "high",
+      "summary": "Tells the engine how many logical processors exist.",
+      "detail": "The origin of the 'lower your CPU usage' trick. On a homogeneous CPU (all cores identical) setting this below the real thread count reduces total CPU utilisation and can reduce package temperature, at some cost in average FPS. On an Intel hybrid CPU it effectively parks the E-cores: independent testing reports roughly a 15-20% loss in 1% low FPS, i.e. visible stutter. This app only emits it when the CPU is homogeneous and has enough threads to spare.",
+      "hardware_policy": "homogeneous_only"
+    },
+    {
+      "key": "Thread.MaxProcessorCount",
+      "group": "cpu_threading",
+      "type": "int", "min": 1, "max": 64,
+      "confidence": "community", "risk": "high",
+      "summary": "Upper bound on logical processors the job system will schedule across.",
+      "detail": "Paired with Thread.ProcessorCount. Same hardware caveat: capping this on a hybrid Intel part starves the E-cores of work without the P-cores picking up the slack.",
+      "hardware_policy": "homogeneous_only"
+    },
+    {
+      "key": "Thread.MinFreeProcessorCount",
+      "group": "cpu_threading",
+      "type": "int", "min": 0, "max": 8,
+      "confidence": "community", "risk": "moderate",
+      "summary": "How many logical processors the engine deliberately leaves idle for the OS.",
+      "detail": "0 lets the job system use everything. On a machine that also runs Discord, a browser and a capture tool, 1-2 can improve frame pacing by leaving headroom for background work rather than fighting the Windows scheduler for it.",
+      "hardware_policy": "always_available"
+    },
+    {
+      "key": "Thread.JobThreadPriority",
+      "group": "cpu_threading",
+      "type": "int", "min": -2, "max": 2,
+      "confidence": "community", "risk": "moderate",
+      "summary": "Windows thread priority for engine job threads.",
+      "detail": "0 is normal. Raising it above 0 makes the game more aggressive against background processes; on a machine with a streaming encoder or heavy overlays that can cause the opposite of what you want. Leave at 0 unless you are diagnosing a specific contention problem.",
+      "hardware_policy": "always_available"
+    },
+    {
+      "key": "GstRender.Thread.ProcessorCount",
+      "group": "cpu_threading",
+      "type": "int", "min": 1, "max": 64,
+      "confidence": "community", "risk": "high",
+      "summary": "Processor count seen by the rendering subsystem specifically.",
+      "detail": "Same trade-off as Thread.ProcessorCount but scoped to render job submission. Usually set equal to or double the general thread count in community configs.",
+      "hardware_policy": "homogeneous_only"
+    },
+    {
+      "key": "GstRender.Thread.MaxProcessorCount",
+      "group": "cpu_threading",
+      "type": "int", "min": 1, "max": 64,
+      "confidence": "community", "risk": "high",
+      "summary": "Upper bound on render worker threads.",
+      "detail": "Community configs commonly set this to the full logical thread count even when capping the general job system, on the theory that render submission benefits from the extra parallelism. Evidence is mixed.",
+      "hardware_policy": "homogeneous_only"
+    },
+    {
+      "key": "RenderDevice.RenderAheadLimit",
+      "group": "render_pipeline",
+      "type": "int", "min": 0, "max": 5,
+      "confidence": "documented", "risk": "moderate",
+      "summary": "How many frames the CPU may queue ahead of the GPU (the engine-side equivalent of 'Max Pre-Rendered Frames').",
+      "detail": "Lower values cut input latency and reduce CPU work spent preparing frames the GPU has not asked for yet. 1 is the competitive choice and pairs well with a frame cap below your GPU ceiling. 0 means driver default. Values above 2 add latency for no visual benefit. On a GPU-bound system, 1 is close to free; on a CPU-bound system it is one of the few settings here that reliably helps.",
+      "hardware_policy": "always_available"
+    },
+    {
+      "key": "RenderDevice.TripleBufferingEnable",
+      "group": "render_pipeline",
+      "type": "bool",
+      "confidence": "documented", "risk": "safe",
+      "summary": "Triple buffering on the swap chain.",
+      "detail": "Off. Triple buffering only makes sense with VSync on and a frame rate below refresh; for competitive play it adds up to a full frame of latency.",
+      "hardware_policy": "always_available"
+    },
+    {
+      "key": "RenderDevice.VSyncEnable",
+      "group": "frame_pacing",
+      "type": "bool",
+      "confidence": "documented", "risk": "safe",
+      "summary": "Vertical sync.",
+      "detail": "Off for competitive play. If you have G-Sync or FreeSync, the correct configuration is VRR on in the driver, VSync ON in the driver only, off in-game, and an in-game frame cap 3-5 FPS below your refresh rate so you stay inside the VRR window.",
+      "hardware_policy": "always_available"
+    },
+    {
+      "key": "RenderDevice.VerticalSyncEnable",
+      "group": "frame_pacing",
+      "type": "bool",
+      "confidence": "legacy", "risk": "safe",
+      "summary": "Older spelling of the VSync toggle used by earlier Frostbite titles.",
+      "detail": "Emitted alongside RenderDevice.VSyncEnable only in 'include legacy commands' mode, since which spelling the current build parses is not settled.",
+      "hardware_policy": "legacy_only"
+    },
+    {
+      "key": "RenderDevice.Dx12Enable",
+      "group": "render_pipeline",
+      "type": "bool",
+      "confidence": "community", "risk": "unsafe",
+      "summary": "Force the DirectX 12 backend on or off.",
+      "detail": "Never written automatically. Forcing an API the game did not select for your driver is a common cause of DXGI_ERROR_DEVICE_HUNG, especially on GTX 10-series. Change the API from the in-game menu instead.",
+      "hardware_policy": "manual_only"
+    },
+    {
+      "key": "GstRender.Dx12Enabled",
+      "group": "render_pipeline",
+      "type": "bool",
+      "confidence": "community", "risk": "unsafe",
+      "summary": "Settings-layer DirectX 12 toggle.",
+      "detail": "See RenderDevice.Dx12Enable. Manual only.",
+      "hardware_policy": "manual_only"
+    },
+    {
+      "key": "GstRender.Dx12NvApi",
+      "group": "render_pipeline",
+      "type": "bool",
+      "confidence": "community", "risk": "moderate",
+      "summary": "Use NVIDIA's NvAPI fast paths under DX12.",
+      "detail": "NVIDIA hardware only. Generally leave enabled on RTX cards; some users report it as a stutter source on older Pascal parts.",
+      "hardware_policy": "nvidia_only"
+    },
+    {
+      "key": "GstRender.Dx12SubmitThreads",
+      "group": "render_pipeline",
+      "type": "int", "min": 0, "max": 8,
+      "confidence": "community", "risk": "moderate",
+      "summary": "Number of threads used to submit DX12 command lists.",
+      "detail": "1 serialises submission, which can smooth frame pacing on CPUs that are already saturated, at a small cost in peak throughput. 0 leaves it to the engine. Only worth touching if you are CPU-bound and chasing stutter rather than average FPS.",
+      "hardware_policy": "always_available"
+    },
+    {
+      "key": "RenderDevice.UseRenderThread",
+      "group": "render_pipeline",
+      "type": "bool",
+      "confidence": "legacy", "risk": "high",
+      "summary": "Run rendering on a dedicated thread.",
+      "detail": "Should stay 1. Circulated configs that set this to 0 are copy-paste damage from old single-core troubleshooting threads.",
+      "hardware_policy": "legacy_only"
+    },
+    {
+      "key": "RenderDevice.RenderJobEnable",
+      "group": "render_pipeline",
+      "type": "bool",
+      "confidence": "legacy", "risk": "high",
+      "summary": "Enable parallel render job dispatch.",
+      "detail": "Should stay 1 on any modern multi-core CPU.",
+      "hardware_policy": "legacy_only"
+    },
+    {
+      "key": "RenderDevice.ForceRenderAheadLimit",
+      "group": "render_pipeline",
+      "type": "int", "min": 0, "max": 5,
+      "confidence": "legacy", "risk": "moderate",
+      "summary": "Hard override of the render-ahead queue depth.",
+      "detail": "Legacy companion to RenderAheadLimit. Emitted only in legacy mode, matched to the same value.",
+      "hardware_policy": "legacy_only"
+    },
+    {
+      "key": "GameTime.MaxVariableFps",
+      "group": "frame_pacing",
+      "type": "int", "min": 0, "max": 1000,
+      "confidence": "documented", "risk": "safe",
+      "summary": "Engine-level frame rate cap. 0 = uncapped.",
+      "detail": "The single most useful line in the file for frame consistency. A cap a few frames below your sustained minimum keeps frame times flat, keeps the GPU out of its power limit, and on a VRR display keeps you inside the variable-refresh window. Capping also reduces CPU load, which is the honest version of what the thread-count trick claims to do.",
+      "hardware_policy": "always_available"
+    },
+    {
+      "key": "PerfOverlay.DrawFps",
+      "group": "overlay",
+      "type": "bool",
+      "confidence": "documented", "risk": "safe",
+      "summary": "On-screen FPS counter.",
+      "detail": "Free, and the only way to tell whether anything in this file actually did something. Turn it on while you are testing.",
+      "hardware_policy": "always_available"
+    },
+    {
+      "key": "PerfOverlay.DrawGraph",
+      "group": "overlay",
+      "type": "bool",
+      "confidence": "legacy", "risk": "safe",
+      "summary": "Frame time graph overlay.",
+      "detail": "Shows CPU and GPU frame time as coloured lines. Far more useful than the FPS number for diagnosing stutter, since stutter is a frame time problem, not an average FPS problem.",
+      "hardware_policy": "always_available"
+    },
+    {
+      "key": "PerfOverlay.FrameFileLogEnable",
+      "group": "overlay",
+      "type": "bool",
+      "confidence": "legacy", "risk": "safe",
+      "summary": "Write frame times to a log file.",
+      "detail": "Off. Logging to disk during a match is itself a stutter source.",
+      "hardware_policy": "legacy_only"
+    },
+    {
+      "key": "PostProcess.DofMethod",
+      "group": "post_process",
+      "type": "int", "min": 0, "max": 3,
+      "confidence": "documented", "risk": "safe",
+      "summary": "Depth of field method. 0 disables it.",
+      "detail": "Depth of field blurs everything that is not what the game thinks you are looking at, which in a shooter is usually an enemy. Free frames and better target acquisition. Always 0.",
+      "hardware_policy": "always_available"
+    },
+    {
+      "key": "PostProcess.BlurMethod",
+      "group": "post_process",
+      "type": "int", "min": 0, "max": 3,
+      "confidence": "legacy", "risk": "safe",
+      "summary": "General post blur method. 0 disables.",
+      "detail": "Legacy Frostbite knob covering assorted screen-space blurs.",
+      "hardware_policy": "legacy_only"
+    },
+    {
+      "key": "PostProcess.DynamicAOEnable",
+      "group": "post_process",
+      "type": "bool",
+      "confidence": "legacy", "risk": "moderate",
+      "summary": "Screen-space ambient occlusion.",
+      "detail": "Contact shadows in corners and doorways. Costs a few percent GPU. Turning it off flattens the image and can make prone bodies slightly harder to pick out, so this is not a free win for visibility.",
+      "hardware_policy": "legacy_only"
+    },
+    {
+      "key": "WorldRender.MotionBlurEnable",
+      "group": "world_render",
+      "type": "bool",
+      "confidence": "documented", "risk": "safe",
+      "summary": "Master motion blur toggle.",
+      "detail": "Off. Motion blur costs frames and smears exactly the fast-moving objects you are trying to shoot.",
+      "hardware_policy": "always_available"
+    },
+    {
+      "key": "WorldRender.MotionBlurForceOn",
+      "group": "world_render",
+      "type": "bool",
+      "confidence": "legacy", "risk": "safe",
+      "summary": "Force motion blur regardless of the menu setting.",
+      "detail": "0. Emitted in legacy mode as a belt-and-braces companion to the master toggle.",
+      "hardware_policy": "legacy_only"
+    },
+    {
+      "key": "WorldRender.MotionBlurMaxSampleCount",
+      "group": "world_render",
+      "type": "int", "min": 0, "max": 32,
+      "confidence": "legacy", "risk": "safe",
+      "summary": "Motion blur sample count. 0 makes the effect free even if it is enabled.",
+      "detail": "Belt-and-braces with the master toggle.",
+      "hardware_policy": "legacy_only"
+    },
+    {
+      "key": "WorldRender.MotionBlurQuality",
+      "group": "world_render",
+      "type": "int", "min": 0, "max": 3,
+      "confidence": "legacy", "risk": "safe",
+      "summary": "Motion blur quality tier. 0 = cheapest.",
+      "detail": "Irrelevant once motion blur is off.",
+      "hardware_policy": "legacy_only"
+    },
+    {
+      "key": "WorldRender.SpotLightShadowmapEnable",
+      "group": "world_render",
+      "type": "bool",
+      "confidence": "legacy", "risk": "moderate",
+      "summary": "Shadows cast by spot lights.",
+      "detail": "Disabling this is a real GPU saving in interiors and at night, and it removes shadow cues that occasionally reveal a player around a corner. Only emitted on low-end GPU tiers.",
+      "hardware_policy": "low_tier_only"
+    },
+    {
+      "key": "WorldRender.SpotLightShadowmapResolution",
+      "group": "world_render",
+      "type": "int", "min": 128, "max": 2048,
+      "confidence": "legacy", "risk": "moderate",
+      "summary": "Resolution of spot light shadow maps.",
+      "detail": "Halving this is a cheaper compromise than disabling spot shadows outright.",
+      "hardware_policy": "low_tier_only"
+    },
+    {
+      "key": "WorldRender.TransparencyShadowmapsEnable",
+      "group": "world_render",
+      "type": "bool",
+      "confidence": "legacy", "risk": "moderate",
+      "summary": "Shadows cast through transparent surfaces (foliage, smoke, glass).",
+      "detail": "Off is a meaningful saving in vegetation-heavy areas. Slight visual flatness in foliage.",
+      "hardware_policy": "low_tier_only"
+    },
+    {
+      "key": "WorldRender.PlanarReflectionEnable",
+      "group": "world_render",
+      "type": "bool",
+      "confidence": "legacy", "risk": "moderate",
+      "summary": "Planar (mirror) reflections on water and flat surfaces.",
+      "detail": "Off. Expensive, and on water maps it is one of the largest single GPU costs available to switch off.",
+      "hardware_policy": "low_tier_only"
+    },
+    {
+      "key": "WorldRender.LightTileCsPathEnable",
+      "group": "world_render",
+      "type": "bool",
+      "confidence": "legacy", "risk": "moderate",
+      "summary": "Compute-shader path for tiled light culling.",
+      "detail": "1 on any GPU newer than about 2014. Historically a fix for specific old hardware; leave alone otherwise.",
+      "hardware_policy": "legacy_only"
+    },
+    {
+      "key": "WorldRender.LensFlaresEnable",
+      "group": "world_render",
+      "type": "bool",
+      "confidence": "legacy", "risk": "safe",
+      "summary": "Lens flares.",
+      "detail": "Off. Cheap to render but it puts bright artefacts over the part of the screen you are aiming at.",
+      "hardware_policy": "legacy_only"
+    },
+    {
+      "key": "WorldRender.SkyEnable",
+      "group": "world_render",
+      "type": "bool",
+      "confidence": "legacy", "risk": "unsafe",
+      "summary": "Render the skybox.",
+      "detail": "Never emitted. Disabling the sky is a visibility exploit and is exactly the shape of change anti-cheat systems and tournament rules take an interest in.",
+      "hardware_policy": "never"
+    },
+    {
+      "key": "WorldRender.DrawDebugEnable",
+      "group": "world_render",
+      "type": "bool",
+      "confidence": "legacy", "risk": "unsafe",
+      "summary": "Debug rendering.",
+      "detail": "Never emitted. Debug draw paths in a shipped multiplayer build are not something to poke at with anti-cheat running.",
+      "hardware_policy": "never"
+    },
+    {
+      "key": "Render.DrawScreenInfo",
+      "group": "overlay",
+      "type": "bool",
+      "confidence": "legacy", "risk": "safe",
+      "summary": "Extra on-screen render info.",
+      "detail": "Off unless you are debugging.",
+      "hardware_policy": "legacy_only"
+    },
+    {
+      "key": "Screen.ResolutionScale",
+      "group": "render_pipeline",
+      "type": "float", "min": 0.4, "max": 2.0,
+      "confidence": "legacy", "risk": "moderate",
+      "summary": "Internal render resolution multiplier.",
+      "detail": "Prefer the in-game resolution scale slider, or better, a proper upscaler (DLSS/FSR/XeSS), which reconstructs detail instead of just stretching a smaller image.",
+      "hardware_policy": "legacy_only"
+    },
+    {
+      "key": "UI.DrawEnable",
+      "group": "misc",
+      "type": "bool",
+      "confidence": "legacy", "risk": "unsafe",
+      "summary": "Draw the HUD.",
+      "detail": "Never emitted outside of a deliberate screenshot workflow. 1 is the only sane value while playing.",
+      "hardware_policy": "never"
+    }
+  ]
+}

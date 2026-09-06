@@ -1,0 +1,398 @@
+{
+  "schema": "bf6tuner.ingame_settings/1",
+  "version": "2026.09.06",
+  "profsave": {
+    "paths": [
+      "%USERPROFILE%\\Documents\\Battlefield 6\\settings\\PROFSAVE_profile",
+      "%USERPROFILE%\\Documents\\Battlefield 6\\settings\\steam\\PROFSAVE_profile",
+      "%ONEDRIVE%\\Documents\\Battlefield 6\\settings\\PROFSAVE_profile",
+      "%ONEDRIVE%\\Documents\\Battlefield 6\\settings\\steam\\PROFSAVE_profile"
+    ],
+    "format": "Line-oriented 'GstKey Value'. The app only rewrites keys that already exist in the file, never adds new ones, and always writes a timestamped backup first.",
+    "warning": "Battlefield 6 must be fully closed before writing. The game rewrites this file on exit and will overwrite your changes."
+  },
+  "presets": {
+    "esports": {
+      "label": "Esports",
+      "goal": "Maximum frame rate and the flattest possible frame times. Visual fidelity is spent freely.",
+      "target_fps_policy": "max"
+    },
+    "competitive": {
+      "label": "Competitive",
+      "goal": "High frame rate, but keep the visual cues that actually help you spot players.",
+      "target_fps_policy": "high"
+    },
+    "balanced": {
+      "label": "Balanced",
+      "goal": "The game looks like the game, at a frame rate that matches your monitor.",
+      "target_fps_policy": "refresh"
+    },
+    "quality": {
+      "label": "Quality",
+      "goal": "Best image the hardware can hold at a stable 60+.",
+      "target_fps_policy": "60"
+    }
+  },
+  "settings": [
+    {
+      "id": "field_of_view",
+      "label": "Field of View",
+      "menu": "Video > Basic",
+      "profsave_key": "GstRender.FieldOfViewVertical",
+      "type": "slider", "min": 55, "max": 120, "unit": "° vertical",
+      "presets": {"esports": 90, "competitive": 90, "balanced": 85, "quality": 80},
+      "impact": {"gpu": 2, "cpu": 2, "vram": 0},
+      "note": "Wider sees more but shrinks distant players and costs a few percent on both CPU and GPU because more of the world is in frame. 90 vertical is the common competitive choice. If you get motion sick, come down rather than up.",
+      "personal": true
+    },
+    {
+      "id": "resolution",
+      "label": "Resolution",
+      "menu": "Video > Basic",
+      "type": "resolution",
+      "presets": {"esports": "native", "competitive": "native", "balanced": "native", "quality": "native"},
+      "impact": {"gpu": 5, "cpu": 1, "vram": 3},
+      "note": "Always native, always fullscreen exclusive if the game offers it. Reduce load with the upscaler, not by running a non-native resolution — a non-native signal is both blurrier and higher latency than DLSS/FSR Quality at the same cost."
+    },
+    {
+      "id": "display_mode",
+      "label": "Display Mode",
+      "menu": "Video > Basic",
+      "type": "enum",
+      "options": [{"value": 0, "label": "Fullscreen (exclusive)"}, {"value": 1, "label": "Borderless"}, {"value": 2, "label": "Windowed"}],
+      "presets": {"esports": 0, "competitive": 0, "balanced": 0, "quality": 0},
+      "impact": {"gpu": 0, "cpu": 1, "vram": 0},
+      "note": "Exclusive fullscreen bypasses the desktop compositor: lower latency, and it is a prerequisite for G-Sync/FreeSync behaving properly. Use borderless only if you genuinely need to alt-tab constantly."
+    },
+    {
+      "id": "vsync",
+      "label": "V-Sync",
+      "menu": "Video > Basic",
+      "profsave_key": "GstRender.VSyncMode",
+      "type": "enum",
+      "options": [{"value": 0, "label": "Off"}, {"value": 1, "label": "On"}],
+      "presets": {"esports": 0, "competitive": 0, "balanced": 0, "quality": 0},
+      "impact": {"gpu": 0, "cpu": 0, "vram": 0},
+      "note": "Off in-game in every case. With a VRR display, enable V-Sync in the NVIDIA/AMD control panel instead and cap frames below refresh — that combination gives you tear-free output without the latency of in-game V-Sync."
+    },
+    {
+      "id": "frame_limit",
+      "label": "Frame Rate Limit",
+      "menu": "Video > Basic",
+      "profsave_key": "GstRender.FrameRateLimit",
+      "type": "slider", "min": 0, "max": 500, "unit": "fps",
+      "presets": {"esports": "computed", "competitive": "computed", "balanced": "computed", "quality": "computed"},
+      "impact": {"gpu": 0, "cpu": 0, "vram": 0},
+      "note": "Computed from your monitor and your predicted frame rate. A cap that you can actually hold at all times beats an uncapped average — frame time consistency is what your hands feel, not the number in the corner."
+    },
+    {
+      "id": "upscaler",
+      "label": "Upscaling / Super Resolution",
+      "menu": "Video > Advanced",
+      "type": "enum",
+      "options": [
+        {"value": "off", "label": "Off / Native"},
+        {"value": "dlaa", "label": "DLAA (native, better AA)"},
+        {"value": "quality", "label": "Quality (67% render)"},
+        {"value": "balanced", "label": "Balanced (58% render)"},
+        {"value": "performance", "label": "Performance (50% render)"},
+        {"value": "ultra_performance", "label": "Ultra Performance (33% render)"}
+      ],
+      "presets": {"esports": "computed", "competitive": "computed", "balanced": "computed", "quality": "computed"},
+      "impact": {"gpu": 5, "cpu": 0, "vram": 1},
+      "note": "Chosen from your GPU: DLSS on RTX, FSR on Radeon and older NVIDIA, XeSS on Arc. Below Quality mode, distant players start to smear during strafing — which is the exact target you care about. The app will not select Performance mode for you at 1080p."
+    },
+    {
+      "id": "frame_generation",
+      "label": "Frame Generation",
+      "menu": "Video > Advanced",
+      "profsave_key": "GstRender.FrameGeneration",
+      "type": "bool",
+      "presets": {"esports": 0, "competitive": 0, "balanced": "computed", "quality": "computed"},
+      "impact": {"gpu": 2, "cpu": -2, "vram": 2},
+      "note": "Generated frames are not sampled from your inputs, so latency goes up even as the counter goes up. Never for competitive play. It is defensible only if you are already above ~60 real FPS and want to fill a high-refresh panel in a quality-first setup.",
+      "gate": {"requires_frame_gen": true}
+    },
+    {
+      "id": "low_latency",
+      "label": "NVIDIA Reflex / AMD Anti-Lag",
+      "menu": "Video > Advanced",
+      "profsave_key": "GstRender.UltraLowLatency",
+      "type": "enum",
+      "options": [{"value": 0, "label": "Off"}, {"value": 1, "label": "On"}, {"value": 2, "label": "On + Boost"}],
+      "presets": {"esports": 1, "competitive": 1, "balanced": 1, "quality": 1},
+      "impact": {"gpu": 0, "cpu": 0, "vram": 0},
+      "note": "On, always. It keeps the render queue short automatically, which is the same job RenderDevice.RenderAheadLimit does by hand. '+Boost' only helps if you are heavily GPU-bound and costs power; plain 'On' is right for nearly everyone.",
+      "gate": {"requires_reflex": true}
+    },
+    {
+      "id": "texture_quality",
+      "label": "Texture Quality",
+      "menu": "Video > Advanced",
+      "profsave_key": "GstRender.TextureQuality",
+      "type": "enum",
+      "options": [
+        {"value": 0, "label": "Low", "vram_gb": 4},
+        {"value": 1, "label": "Medium", "vram_gb": 6},
+        {"value": 2, "label": "High", "vram_gb": 8},
+        {"value": 3, "label": "Ultra", "vram_gb": 10},
+        {"value": 4, "label": "Insane", "vram_gb": 12}
+      ],
+      "presets": {"esports": 2, "competitive": 3, "balanced": 3, "quality": 4},
+      "impact": {"gpu": 1, "cpu": 0, "vram": 5},
+      "note": "Textures cost VRAM, not frames. If you have the memory, high textures are the closest thing to free image quality in the game. If you do not, you get texture pop-in and hitching, which is far worse than a slightly softer wall. Capped by detected VRAM."
+    },
+    {
+      "id": "texture_filtering",
+      "label": "Texture Filtering",
+      "menu": "Video > Advanced",
+      "type": "enum",
+      "options": [{"value": 0, "label": "Low (4x)"}, {"value": 1, "label": "Medium (8x)"}, {"value": 2, "label": "High (16x)"}],
+      "presets": {"esports": 2, "competitive": 2, "balanced": 2, "quality": 2},
+      "impact": {"gpu": 1, "cpu": 0, "vram": 1},
+      "note": "Anisotropic filtering keeps ground textures sharp at a distance. It has been effectively free on every GPU made in the last decade. Max it regardless of preset."
+    },
+    {
+      "id": "lighting_quality",
+      "label": "Lighting Quality",
+      "menu": "Video > Advanced",
+      "profsave_key": "GstRender.LightingQuality",
+      "type": "enum",
+      "options": [{"value": 0, "label": "Low"}, {"value": 1, "label": "Medium"}, {"value": 2, "label": "High"}, {"value": 3, "label": "Ultra"}],
+      "presets": {"esports": 0, "competitive": 1, "balanced": 2, "quality": 3},
+      "impact": {"gpu": 4, "cpu": 1, "vram": 1},
+      "note": "One of the three biggest GPU costs in the menu. Dropping it also flattens the scene, which cuts both ways for spotting players — less shadow noise to search through, but fewer contrast cues."
+    },
+    {
+      "id": "shadow_quality",
+      "label": "Shadow Quality",
+      "menu": "Video > Advanced",
+      "profsave_key": "GstRender.ShadowQuality",
+      "type": "enum",
+      "options": [{"value": 0, "label": "Low"}, {"value": 1, "label": "Medium"}, {"value": 2, "label": "High"}, {"value": 3, "label": "Ultra"}],
+      "presets": {"esports": 0, "competitive": 1, "balanced": 2, "quality": 3},
+      "impact": {"gpu": 5, "cpu": 2, "vram": 2},
+      "note": "The single most expensive setting here and it costs CPU as well as GPU, because shadow maps mean extra draw calls. Going Ultra to Low is routinely worth 15-25% frame rate. Caveat: shadows cast around corners are a genuine information source at Medium and above, and Low removes some of them.",
+      "biggest_lever": true
+    },
+    {
+      "id": "mesh_quality",
+      "label": "Mesh Quality",
+      "menu": "Video > Advanced",
+      "profsave_key": "GstRender.MeshQuality",
+      "type": "enum",
+      "options": [{"value": 0, "label": "Low"}, {"value": 1, "label": "Medium"}, {"value": 2, "label": "High"}, {"value": 3, "label": "Ultra"}],
+      "presets": {"esports": 1, "competitive": 2, "balanced": 2, "quality": 3},
+      "impact": {"gpu": 2, "cpu": 4, "vram": 2},
+      "note": "Controls geometric detail and how aggressively distant objects drop to simpler models. This is a CPU setting more than a GPU one. Do not run it at Low: aggressive LOD makes player models at range change silhouette, which is worse than the frames it buys.",
+      "floor": {"competitive_min": 1}
+    },
+    {
+      "id": "terrain_quality",
+      "label": "Terrain Quality",
+      "menu": "Video > Advanced",
+      "profsave_key": "GstRender.TerrainQuality",
+      "type": "enum",
+      "options": [{"value": 0, "label": "Low"}, {"value": 1, "label": "Medium"}, {"value": 2, "label": "High"}, {"value": 3, "label": "Ultra"}],
+      "presets": {"esports": 1, "competitive": 1, "balanced": 2, "quality": 3},
+      "impact": {"gpu": 3, "cpu": 2, "vram": 1},
+      "note": "Terrain tessellation and detail. Medium is a good stopping point — Low can visibly change ground contours, and on a shooter with prone players that matters."
+    },
+    {
+      "id": "vegetation_quality",
+      "label": "Undergrowth / Vegetation Quality",
+      "menu": "Video > Advanced",
+      "profsave_key": "GstRender.VegetationQuality",
+      "type": "enum",
+      "options": [{"value": 0, "label": "Low"}, {"value": 1, "label": "Medium"}, {"value": 2, "label": "High"}, {"value": 3, "label": "Ultra"}],
+      "presets": {"esports": 0, "competitive": 1, "balanced": 2, "quality": 3},
+      "impact": {"gpu": 4, "cpu": 2, "vram": 1},
+      "note": "Expensive on vegetated maps, and lower settings thin out the grass that players hide in. Competitive players deliberately run this low. Be aware that this is the setting most likely to be flagged as an unfair advantage in an organised match — check your league's rules."
+    },
+    {
+      "id": "effects_quality",
+      "label": "Effects Quality",
+      "menu": "Video > Advanced",
+      "profsave_key": "GstRender.EffectsQuality",
+      "type": "enum",
+      "options": [{"value": 0, "label": "Low"}, {"value": 1, "label": "Medium"}, {"value": 2, "label": "High"}, {"value": 3, "label": "Ultra"}],
+      "presets": {"esports": 0, "competitive": 1, "balanced": 2, "quality": 3},
+      "impact": {"gpu": 5, "cpu": 3, "vram": 2},
+      "note": "Explosions, smoke, particles and destruction. This is where your 1% lows go to die in a busy Conquest fight — it is a frame time setting far more than an average FPS setting. Lowering it also thins smoke, which is a real tactical difference.",
+      "biggest_lever": true
+    },
+    {
+      "id": "post_process_quality",
+      "label": "Post Process Quality",
+      "menu": "Video > Advanced",
+      "profsave_key": "GstRender.PostProcessQuality",
+      "type": "enum",
+      "options": [{"value": 0, "label": "Low"}, {"value": 1, "label": "Medium"}, {"value": 2, "label": "High"}, {"value": 3, "label": "Ultra"}],
+      "presets": {"esports": 0, "competitive": 1, "balanced": 2, "quality": 3},
+      "impact": {"gpu": 3, "cpu": 0, "vram": 1},
+      "note": "Bundles bloom, depth of field quality and assorted screen-space effects. Low is a clean win for both frames and clarity."
+    },
+    {
+      "id": "ambient_occlusion",
+      "label": "Ambient Occlusion",
+      "menu": "Video > Advanced",
+      "profsave_key": "GstRender.AmbientOcclusion",
+      "type": "enum",
+      "options": [{"value": 0, "label": "Off"}, {"value": 1, "label": "SSAO"}, {"value": 2, "label": "HBAO"}, {"value": 3, "label": "RTAO"}],
+      "presets": {"esports": 0, "competitive": 1, "balanced": 1, "quality": 2},
+      "impact": {"gpu": 3, "cpu": 0, "vram": 1},
+      "note": "Contact shadowing in corners and under objects. Off is a few percent faster; SSAO is cheap and adds depth cues that help you read doorways. RTAO is a ray tracing feature and priced accordingly."
+    },
+    {
+      "id": "ray_tracing",
+      "label": "Ray Tracing",
+      "menu": "Video > Ray Tracing",
+      "profsave_key": "GstRender.RayTracingEnabled",
+      "type": "bool",
+      "presets": {"esports": 0, "competitive": 0, "balanced": 0, "quality": "computed"},
+      "impact": {"gpu": 5, "cpu": 2, "vram": 3},
+      "note": "Never for competitive play — it is a 20-40% frame rate cost for lighting you will not look at while being shot. Only offered in Quality preset, and only on a GPU with strong RT hardware and enough VRAM.",
+      "gate": {"min_rt": 3, "min_vram": 12}
+    },
+    {
+      "id": "motion_blur",
+      "label": "Motion Blur",
+      "menu": "Video > Advanced",
+      "profsave_key": "GstRender.MotionBlurWorld",
+      "type": "slider", "min": 0, "max": 100, "unit": "%",
+      "presets": {"esports": 0, "competitive": 0, "balanced": 0, "quality": 0},
+      "impact": {"gpu": 2, "cpu": 0, "vram": 0},
+      "note": "Zero in every preset. It costs GPU time to make moving targets harder to hit. There is no configuration in which this is the right call for multiplayer.",
+      "always": 0
+    },
+    {
+      "id": "chromatic_aberration",
+      "label": "Chromatic Aberration",
+      "menu": "Video > Advanced",
+      "profsave_key": "GstRender.ChromaticAberration",
+      "type": "bool",
+      "presets": {"esports": 0, "competitive": 0, "balanced": 0, "quality": 0},
+      "impact": {"gpu": 1, "cpu": 0, "vram": 0},
+      "note": "Colour fringing at the screen edges. Nearly free to render and purely negative for clarity. Off.",
+      "always": 0
+    },
+    {
+      "id": "film_grain",
+      "label": "Film Grain",
+      "menu": "Video > Advanced",
+      "profsave_key": "GstRender.FilmGrain",
+      "type": "bool",
+      "presets": {"esports": 0, "competitive": 0, "balanced": 0, "quality": 0},
+      "impact": {"gpu": 1, "cpu": 0, "vram": 0},
+      "note": "Adds animated noise over the whole image. It fights your upscaler's temporal accumulation and hides distant movement. Off.",
+      "always": 0
+    },
+    {
+      "id": "vignette",
+      "label": "Vignetting",
+      "menu": "Video > Advanced",
+      "profsave_key": "GstRender.Vignette",
+      "type": "bool",
+      "presets": {"esports": 0, "competitive": 0, "balanced": 0, "quality": 0},
+      "impact": {"gpu": 1, "cpu": 0, "vram": 0},
+      "note": "Darkens the screen edges — exactly where peripheral movement appears. Off.",
+      "always": 0
+    },
+    {
+      "id": "lens_distortion",
+      "label": "Lens Distortion",
+      "menu": "Video > Advanced",
+      "profsave_key": "GstRender.LensDistortion",
+      "type": "bool",
+      "presets": {"esports": 0, "competitive": 0, "balanced": 0, "quality": 0},
+      "impact": {"gpu": 1, "cpu": 0, "vram": 0},
+      "note": "Warps the image at the edges. Off.",
+      "always": 0
+    },
+    {
+      "id": "camera_shake",
+      "label": "Camera Shake",
+      "menu": "Video > Advanced",
+      "type": "slider", "min": 0, "max": 100, "unit": "%",
+      "presets": {"esports": 0, "competitive": 0, "balanced": 25, "quality": 50},
+      "impact": {"gpu": 0, "cpu": 0, "vram": 0},
+      "note": "Costs nothing to render, but it moves your crosshair for you during suppression and explosions. Minimum for anyone trying to win a gunfight."
+    },
+    {
+      "id": "hdr",
+      "label": "HDR",
+      "menu": "Video > Basic",
+      "profsave_key": "GstRender.HDREnabled",
+      "type": "bool",
+      "presets": {"esports": 0, "competitive": 0, "balanced": "computed", "quality": "computed"},
+      "impact": {"gpu": 1, "cpu": 0, "vram": 1},
+      "note": "Only if you have a display that actually does HDR well (true local dimming or OLED). On a cheap 'HDR400' panel it washes the image out and can cost you contrast against dark backgrounds. Off for competitive regardless of the panel.",
+      "gate": {"requires_hdr_display": true}
+    },
+    {
+      "id": "brightness",
+      "label": "Brightness",
+      "menu": "Video > Basic",
+      "profsave_key": "GstRender.Brightness",
+      "type": "slider", "min": 0, "max": 100, "unit": "%",
+      "presets": {"esports": 55, "competitive": 55, "balanced": 50, "quality": 50},
+      "impact": {"gpu": 0, "cpu": 0, "vram": 0},
+      "note": "Slightly above default lifts detail out of shadowed interiors. Push it much further and you crush the contrast that makes a player silhouette readable.",
+      "personal": true
+    },
+    {
+      "id": "mouse_sensitivity",
+      "label": "Mouse Sensitivity",
+      "menu": "Controls > Mouse",
+      "profsave_key": "GstInput.MouseSensitivity",
+      "type": "slider", "min": 1, "max": 100, "unit": "%",
+      "presets": {"esports": "keep", "competitive": "keep", "balanced": "keep", "quality": "keep"},
+      "impact": {"gpu": 0, "cpu": 0, "vram": 0},
+      "note": "Never changed by this app. Your muscle memory is worth more than any setting in this list.",
+      "personal": true, "never_write": true
+    },
+    {
+      "id": "mouse_acceleration",
+      "label": "Mouse Acceleration",
+      "menu": "Controls > Mouse",
+      "profsave_key": "GstInput.MouseAcceleration",
+      "type": "bool",
+      "presets": {"esports": 0, "competitive": 0, "balanced": 0, "quality": 0},
+      "impact": {"gpu": 0, "cpu": 0, "vram": 0},
+      "note": "Off. Acceleration means the same physical movement produces a different in-game rotation depending on speed, which is the opposite of building muscle memory.",
+      "always": 0
+    },
+    {
+      "id": "ads_sensitivity",
+      "label": "ADS Sensitivity / Uniform Soldier Aiming",
+      "menu": "Controls > Mouse",
+      "profsave_key": "GstInput.ADSMouseSensitivity",
+      "type": "slider", "min": 0, "max": 200, "unit": "%",
+      "presets": {"esports": "keep", "competitive": "keep", "balanced": "keep", "quality": "keep"},
+      "impact": {"gpu": 0, "cpu": 0, "vram": 0},
+      "note": "Set it once so that the same hand movement covers the same on-screen distance at every zoom level, then never touch it again. Not something an auto-tuner should decide for you.",
+      "personal": true, "never_write": true
+    },
+    {
+      "id": "master_volume",
+      "label": "Audio Mix / Master Volume",
+      "menu": "Audio",
+      "profsave_key": "GstAudio.MasterVolume",
+      "type": "slider", "min": 0, "max": 100, "unit": "%",
+      "presets": {"esports": "keep", "competitive": "keep", "balanced": "keep", "quality": "keep"},
+      "impact": {"gpu": 0, "cpu": 0, "vram": 0},
+      "note": "Not touched. Worth doing by hand though: set the audio preset to headphones/'War Tapes'-equivalent and pull music down, because footstep direction is information.",
+      "personal": true, "never_write": true
+    },
+    {
+      "id": "music_volume",
+      "label": "Music Volume",
+      "menu": "Audio",
+      "profsave_key": "GstAudio.MusicVolume",
+      "type": "slider", "min": 0, "max": 100, "unit": "%",
+      "presets": {"esports": 0, "competitive": 10, "balanced": 40, "quality": 50},
+      "impact": {"gpu": 0, "cpu": 0, "vram": 0},
+      "note": "Music masks footsteps and reloads. Competitive players run it at or near zero."
+    }
+  ]
+}
