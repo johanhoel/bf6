@@ -114,6 +114,20 @@ QPlainTextEdit {{
     font-family: {MONO}; font-size: 12px;
     selection-background-color: {ACCENT_DIM};
 }}
+QTextEdit#SettingDetail {{
+    background-color: {BG_RAISED};
+    border: 1px solid {BORDER};
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-family: 'Segoe UI', 'Inter', sans-serif;
+    font-size: 13px;
+    selection-background-color: {ACCENT_DIM};
+}}
+QSplitter::handle:vertical {{
+    height: 6px;
+    background: {BORDER};
+    margin: 2px 0;
+}}
 
 QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
 QScrollBar::handle:vertical {{ background: #2f3542; border-radius: 5px; min-height: 30px; }}

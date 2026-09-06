@@ -1,6 +1,6 @@
 {
   "schema": "bf6tuner.ingame_settings/1",
-  "version": "2026.09.06",
+  "version": "2026.09.06.1",
   "profsave": {
     "paths": [
       "%USERPROFILE%\\Documents\\Battlefield 6\\settings\\PROFSAVE_profile",
@@ -887,6 +887,55 @@
       }
     },
     {
+      "id": "water_quality",
+      "label": "Water Quality",
+      "menu": "Video > Advanced",
+      "profsave_key": "GstRender.WaterQuality",
+      "type": "enum",
+      "options": [
+        {"value": 0, "label": "Low"},
+        {"value": 1, "label": "Medium"},
+        {"value": 2, "label": "High"},
+        {"value": 3, "label": "Ultra"}
+      ],
+      "presets": {
+        "esports": 0,
+        "competitive": 1,
+        "balanced": 2,
+        "quality": 3
+      },
+      "impact": {"gpu": 2, "cpu": 0, "vram": 1},
+      "note": "Controls water surface reflections, wave tessellation and the quality of the underwater transition. Medium is a solid stop: screen-space reflections at High and Ultra look impressive in captures but are barely visible when you are running across a bridge. Low replaces the surface with a flat texture.",
+      "cost": {
+        "0": {"gpu": -4.0},
+        "1": {"gpu": -2.0},
+        "2": {"gpu": 0},
+        "3": {"gpu": 3.0, "vram": 0.3}
+      },
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "Meaningful GPU saving on water-heavy maps",
+            "Flat water surface is less distracting as a moving reflection while you are aiming"
+          ],
+          "cons": [
+            "Low makes water look flat and plasticky — obvious on coastal or river maps",
+            "Screen-space reflections disappear below Medium"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "More convincing wave shape and real-time reflections",
+            "Ultra adds higher tessellation density and accurate refraction"
+          ],
+          "cons": [
+            "Costs GPU on every map, not just water-heavy ones",
+            "The Ultra-over-High detail is rarely visible during a firefight"
+          ]
+        }
+      }
+    },
+    {
       "id": "vegetation_quality",
       "label": "Undergrowth / Vegetation Quality",
       "menu": "Video > Advanced",
@@ -957,6 +1006,55 @@
           ],
           "cons": [
             "Expensive, and it gives enemies more cover against you too"
+          ]
+        }
+      }
+    },
+    {
+      "id": "sky_quality",
+      "label": "Sky / Volumetric Cloud Quality",
+      "menu": "Video > Advanced",
+      "profsave_key": "GstRender.SkyQuality",
+      "type": "enum",
+      "options": [
+        {"value": 0, "label": "Low"},
+        {"value": 1, "label": "Medium"},
+        {"value": 2, "label": "High"},
+        {"value": 3, "label": "Ultra"}
+      ],
+      "presets": {
+        "esports": 0,
+        "competitive": 1,
+        "balanced": 2,
+        "quality": 3
+      },
+      "impact": {"gpu": 2, "cpu": 0, "vram": 1},
+      "note": "Volumetric cloud simulation and atmospheric scattering quality. Low replaces the volumetric clouds with a flat skybox texture — the most visible sky downgrade. Medium gives you real 3D clouds at a sensible cost. Ultra adds a higher ray-march step count that makes cloud edges and internal shadowing sharper, which matters most in wide-open outdoor maps.",
+      "cost": {
+        "0": {"gpu": -4.5},
+        "1": {"gpu": -2.0},
+        "2": {"gpu": 0},
+        "3": {"gpu": 3.5}
+      },
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "GPU saving on every map — clouds are rendered regardless of whether you look up",
+            "A flat skybox is less of a distraction while you are aiming upward at a rooftop"
+          ],
+          "cons": [
+            "Low gives you a baked flat texture: no 3D cloud shape, no weather progression",
+            "Atmospheric gradients become static"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "3D volumetric clouds with visible density and internal shadow",
+            "Ultra adds real cloud-shadow projection onto terrain"
+          ],
+          "cons": [
+            "Volumetric rendering costs GPU time even when you are not looking at the sky",
+            "Ultra's improvement over High is mostly noticeable in a screenshot"
           ]
         }
       }
@@ -1103,6 +1201,55 @@
           ],
           "cons": [
             "Costs frames to add glare over the part of the screen you aim at"
+          ]
+        }
+      }
+    },
+    {
+      "id": "decal_quality",
+      "label": "Decal Quality",
+      "menu": "Video > Advanced",
+      "profsave_key": "GstRender.DecalQuality",
+      "type": "enum",
+      "options": [
+        {"value": 0, "label": "Low"},
+        {"value": 1, "label": "Medium"},
+        {"value": 2, "label": "High"},
+        {"value": 3, "label": "Ultra"}
+      ],
+      "presets": {
+        "esports": 1,
+        "competitive": 1,
+        "balanced": 2,
+        "quality": 3
+      },
+      "impact": {"gpu": 1, "cpu": 1, "vram": 1},
+      "note": "Bullet holes, explosion craters, blood, scorched surfaces and other persistent marks. This controls both the resolution of each decal projector and how many remain active at once before the oldest are retired. Low causes marks to pop off surfaces quickly, which can reduce visual clutter in a sustained firefight — but also makes it harder to read where fire is landing.",
+      "cost": {
+        "0": {"gpu": -2.0, "cpu": -1.0},
+        "1": {"gpu": -1.0, "cpu": -0.5},
+        "2": {"gpu": 0, "cpu": 0},
+        "3": {"gpu": 1.5, "cpu": 1.0}
+      },
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "GPU and CPU saving in a heavy firefight — many simultaneous decals add draw calls",
+            "Marks disappear faster, reducing visual noise after a sustained engagement"
+          ],
+          "cons": [
+            "Fewer active bullet holes: harder to read where shots have been landing",
+            "Destruction surfaces stay cleaner and look less worn than they should"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Persistent, crisp marks give you a shot-landing readout on walls and ground",
+            "High-resolution decals on destruction debris look convincing up close"
+          ],
+          "cons": [
+            "Many simultaneous decals add draw calls on both GPU and CPU",
+            "Cost spikes during heavy contact, exactly when frame headroom matters most"
           ]
         }
       }

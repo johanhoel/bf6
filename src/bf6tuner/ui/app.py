@@ -16,8 +16,8 @@ from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QAbstractSpinBox, QApplication, QButtonGroup, QCheckBox, QComboBox, QFileDialog, QFrame,
     QGridLayout, QHBoxLayout, QHeaderView, QLabel, QMainWindow, QMessageBox,
-    QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy, QSpinBox, QTableWidget,
-    QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget,
+    QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy, QSpinBox, QSplitter, QTableWidget,
+    QTableWidgetItem, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
 )
 
 from .. import APP_NAME, __version__
@@ -304,7 +304,7 @@ class MainWindow(QMainWindow):
         row.setContentsMargins(6, 0, 6, 0)
         self.override_note = dim(
             "Every value here is editable. Change one and the prediction, the frame cap "
-            "and the comparison all update to match."
+            "and the comparison all update to match. Click any row to see a full description."
         )
         row.addWidget(self.override_note, 1)
 
@@ -313,7 +313,23 @@ class MainWindow(QMainWindow):
         row.addWidget(self.reset_overrides_button)
         layout.addLayout(row)
 
-        layout.addWidget(self.settings_table, 1)
+        # Splitter: table on top, detail pane below.
+        splitter = QSplitter(Qt.Vertical)
+        splitter.setChildrenCollapsible(False)
+        splitter.addWidget(self.settings_table)
+
+        self.setting_detail = QTextEdit()
+        self.setting_detail.setReadOnly(True)
+        self.setting_detail.setObjectName("SettingDetail")
+        self.setting_detail.setMinimumHeight(80)
+        self.setting_detail.setMaximumHeight(200)
+        self.setting_detail.setPlaceholderText(
+            "Click any row to see a full description and trade-offs for that setting."
+        )
+        splitter.addWidget(self.setting_detail)
+        splitter.setSizes([9999, 150])
+
+        layout.addWidget(splitter, 1)
         return container
 
     def _make_editor(self, choice, setting: dict) -> QWidget | None:
@@ -365,6 +381,7 @@ class MainWindow(QMainWindow):
 
         if building:
             table.setRowCount(len(rec.settings))
+            table.currentCellChanged.connect(self._on_setting_row_changed)
 
         for row, choice in enumerate(rec.settings):
             setting = self.db.setting(choice.setting_id) or {}
@@ -483,6 +500,87 @@ class MainWindow(QMainWindow):
         self.setting_overrides.clear()
         prefs.clear_setting_overrides()
         self.refresh()
+
+    # -- setting detail pane -----------------------------------------------
+
+    def _on_setting_row_changed(
+        self, row: int, _col: int, _prev_row: int, _prev_col: int
+    ) -> None:
+        if self.rec is None or row < 0 or row >= len(self.rec.settings):
+            self.setting_detail.clear()
+            return
+        choice = self.rec.settings[row]
+        setting = self.db.setting(choice.setting_id)
+        self._update_setting_detail(choice, setting)
+
+    def _update_setting_detail(
+        self, choice: "SettingChoice", setting: dict | None
+    ) -> None:
+        """Render the full description + trade-offs for a setting into the detail pane."""
+        if setting is None:
+            self.setting_detail.setPlainText(choice.reason)
+            return
+
+        note = setting.get("note", "")
+        menu = setting.get("menu", "").replace(" > ", " › ")
+        tradeoff = setting.get("tradeoff", {})
+        impact = setting.get("impact", {})
+        gpu_cost = impact.get("gpu", 0)
+        cpu_cost = impact.get("cpu", 0)
+        vram_cost = impact.get("vram", 0)
+
+        def _cost_label(val: int) -> str:
+            if val >= 5: return "very high"
+            if val >= 3: return "high"
+            if val >= 2: return "medium"
+            if val >= 1: return "low"
+            return "none"
+
+        parts: list[str] = []
+        parts.append(
+            f"<b style='font-size:14px'>{choice.label}</b>"
+            f"&nbsp;&nbsp;<span style='color:{theme.TEXT_DIM}'>{menu}</span>"
+        )
+
+        cost_bits = []
+        if gpu_cost >= 1:
+            cost_bits.append(f"GPU: {_cost_label(gpu_cost)}")
+        if cpu_cost >= 1:
+            cost_bits.append(f"CPU: {_cost_label(cpu_cost)}")
+        if vram_cost >= 2:
+            cost_bits.append(f"VRAM: {_cost_label(vram_cost)}")
+        if cost_bits:
+            parts.append(
+                f"<br><span style='color:{theme.TEXT_DIM}; font-size:11px'>"
+                f"Performance impact — {' · '.join(cost_bits)}</span>"
+            )
+
+        if note:
+            parts.append(f"<br><br>{note}")
+
+        def _section(label: str, colour: str, data: dict) -> None:
+            pros = data.get("pros", [])
+            cons = data.get("cons", [])
+            if not pros and not cons:
+                return
+            parts.append(
+                f"<br><br><span style='color:{colour}; font-weight:600'>{label}</span>"
+            )
+            for p in pros:
+                parts.append(f"<br><span style='color:{theme.OK}'>+</span>&nbsp;{p}")
+            for c in cons:
+                parts.append(f"<br><span style='color:{theme.WARN}'>−</span>&nbsp;{c}")
+
+        _section("Raising it", theme.INFO, tradeoff.get("raise", {}))
+        _section("Lowering it", theme.INFO, tradeoff.get("lower", {}))
+
+        if choice.overridden and choice.recommended_display:
+            parts.append(
+                f"<br><br><span style='color:{theme.WARN}'>You have overridden this. "
+                f"The engine recommended {choice.recommended_display}.</span>"
+            )
+
+        self.setting_detail.setHtml("".join(parts))
 
     def _make_table(self, headers: list[str], widths: list[int]) -> QTableWidget:
         table = QTableWidget(0, len(headers))
