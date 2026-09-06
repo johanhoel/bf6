@@ -651,11 +651,13 @@ class MainWindow(QMainWindow):
         table.setEditTriggers(QTableWidget.NoEditTriggers)
         table.setSelectionBehavior(QTableWidget.SelectRows)
         header = table.horizontalHeader()
+        # Every column is interactive (drag to resize). The last one also
+        # stretches to fill spare space, but is still draggable.
+        header.setSectionResizeMode(QHeaderView.Interactive)
+        header.setStretchLastSection(True)
+        header.setMinimumSectionSize(40)
         for index, width in enumerate(widths):
-            if width < 0:
-                header.setSectionResizeMode(index, QHeaderView.Stretch)
-            else:
-                header.setSectionResizeMode(index, QHeaderView.Fixed)
+            if width > 0:
                 table.setColumnWidth(index, width)
         return table
 
