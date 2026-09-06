@@ -30,7 +30,20 @@ class GamePaths:
     profsave: Path | None = None
     documents_dir: Path | None = None
     candidates: list[Path] = field(default_factory=list)
+    profsave_candidates: list[Path] = field(default_factory=list)
+    searched: list[Path] = field(default_factory=list)
+    overridden: set[str] = field(default_factory=set)
     notes: list[str] = field(default_factory=list)
+
+    def search_summary(self) -> str:
+        """What was looked at, so a failure is diagnosable rather than mysterious."""
+        if not self.searched:
+            return "No Battlefield settings folders were found to search."
+        lines = [f"Searched {len(self.searched)} location(s):"]
+        lines += [f"  {path}" for path in self.searched[:12]]
+        if len(self.searched) > 12:
+            lines.append(f"  ... and {len(self.searched) - 12} more")
+        return "\n".join(lines)
 
     @property
     def install_drive(self) -> str:
@@ -168,6 +181,95 @@ def _documents_dirs() -> list[Path]:
     return seen
 
 
+def _profsave_roots(install_dir: Path | None) -> list[Path]:
+    """Every plausible parent of a Battlefield settings folder.
+
+    Battlefield titles have historically put PROFSAVE_profile under Documents,
+    but the exact layout moves between releases and storefronts: BF2042 on Steam
+    adds a 'steam' subfolder, and some EA titles nest one folder per account id.
+    Rather than encode a guess, search the places it could be.
+    """
+    roots: list[Path] = list(_documents_dirs())
+    for env in ("LOCALAPPDATA", "APPDATA", "USERPROFILE"):
+        value = os.environ.get(env)
+        if value:
+            roots.append(Path(value))
+    profile = os.environ.get("USERPROFILE")
+    if profile:
+        roots.append(Path(profile) / "Saved Games")
+    if install_dir:
+        roots.append(install_dir)
+        roots.append(install_dir.parent)
+
+    unique: list[Path] = []
+    for root in roots:
+        if root not in unique:
+            unique.append(root)
+    return unique
+
+
+def _bounded_walk(base: Path, max_depth: int = 4, max_dirs: int = 400):
+    """Yield directories under ``base``, depth- and count-limited.
+
+    A settings tree is tiny, but these roots include %USERPROFILE%, so an
+    unbounded walk could wander into something enormous.
+    """
+    queue: list[tuple[Path, int]] = [(base, 0)]
+    seen = 0
+    while queue and seen < max_dirs:
+        current, depth = queue.pop(0)
+        yield current
+        seen += 1
+        if depth >= max_depth:
+            continue
+        try:
+            for child in current.iterdir():
+                if child.is_dir() and not child.is_symlink():
+                    queue.append((child, depth + 1))
+        except OSError:
+            continue
+
+
+def find_profsave_files(install_dir: Path | None = None) -> tuple[list[Path], list[Path]]:
+    """Return (files found, directories searched), newest file first."""
+    found: list[Path] = []
+    searched: list[Path] = []
+
+    for root in _profsave_roots(install_dir):
+        if not root.is_dir():
+            continue
+        try:
+            game_dirs = [
+                child for child in root.iterdir()
+                if child.is_dir() and child.name.lower().replace(" ", "").startswith("battlefield")
+            ]
+        except OSError:
+            continue
+
+        for game_dir in game_dirs:
+            # Only Battlefield 6, but tolerate naming variations like "Battlefield6".
+            compact = game_dir.name.lower().replace(" ", "").replace("_", "")
+            if not compact.startswith("battlefield6"):
+                continue
+            for directory in _bounded_walk(game_dir):
+                searched.append(directory)
+                try:
+                    for entry in directory.iterdir():
+                        if entry.is_file() and entry.name.upper().startswith("PROFSAVE"):
+                            found.append(entry)
+                except OSError:
+                    continue
+
+    unique: list[Path] = []
+    for path in found:
+        if path not in unique:
+            unique.append(path)
+    # Several profiles can exist (multiple EA accounts); the one the player last
+    # used is the one the game wrote most recently.
+    unique.sort(key=lambda path: path.stat().st_mtime if path.exists() else 0, reverse=True)
+    return unique, searched
+
+
 def _find_executable(install_dir: Path) -> Path | None:
     for name in EXE_NAMES:
         direct = install_dir / name
@@ -184,7 +286,7 @@ def _find_executable(install_dir: Path) -> Path | None:
     return None
 
 
-def discover() -> GamePaths:
+def discover(overrides: dict[str, str] | None = None) -> GamePaths:
     result = GamePaths()
     candidates: list[Path] = []
 
@@ -244,28 +346,42 @@ def discover() -> GamePaths:
     if result.install_dir:
         result.user_cfg = result.install_dir / "User.cfg"
 
-    for documents in _documents_dirs():
-        settings_dir = documents / "Battlefield 6" / "settings"
-        if not settings_dir.is_dir():
-            continue
-        result.documents_dir = settings_dir
-        for relative in ("PROFSAVE_profile", "steam/PROFSAVE_profile"):
-            candidate = settings_dir / relative
-            if candidate.is_file():
-                result.profsave = candidate
-                break
-        if result.profsave:
-            break
+    profsave_files, searched = find_profsave_files(result.install_dir)
+    result.profsave_candidates = profsave_files
+    result.searched = searched
+    if profsave_files:
+        result.profsave = profsave_files[0]
+        result.documents_dir = profsave_files[0].parent
+        if len(profsave_files) > 1:
+            result.notes.append(
+                f"Found {len(profsave_files)} profile files; using the most recently written one "
+                f"({result.profsave}). Use 'Locate...' to pick a different one."
+            )
 
     if result.install_dir is None:
         result.notes.append(
             "Battlefield 6's install folder was not found automatically. Set it by hand: it is "
             "the folder containing the game executable, not the Documents folder."
         )
+    # A path the user picked by hand always wins over anything detected.
+    for role, value in (overrides or {}).items():
+        path = Path(value)
+        if role == "profsave" and path.is_file():
+            result.profsave = path
+            result.documents_dir = path.parent
+            result.overridden.add("profsave")
+        elif role == "install_dir" and path.is_dir():
+            result.install_dir = path
+            result.executable = _find_executable(path)
+            result.user_cfg = path / "User.cfg"
+            result.overridden.add("install_dir")
+
     if result.profsave is None:
         result.notes.append(
-            "PROFSAVE_profile was not found. It appears after the game has been launched once "
-            "and the video settings saved."
+            "PROFSAVE_profile was not found. It is written the first time Battlefield 6 saves "
+            "its video settings, so launch the game once, change any video setting, apply it and "
+            "quit fully. If it still is not found, use 'Locate...' to point at it - the app then "
+            "remembers the path."
         )
     return result
 

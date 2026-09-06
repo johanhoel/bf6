@@ -186,6 +186,30 @@ def match_gpu(profile: HardwareProfile, db: Database) -> dict[str, Any]:
     }
 
 
+def infer_generation(name: str, db: Database) -> str:
+    """Guess the microarchitecture from the model number.
+
+    Without this an unlisted new part is scored as 'unknown' (a 0.85 multiplier
+    aimed at older silicon), which badly understates a current-generation CPU and
+    can flip the whole recommendation to CPU-limited for no reason.
+    """
+    inference = db.cpu_db.get("heuristic", {}).get("name_inference", {})
+    lowered = re.sub(r"[^a-z0-9 ]", " ", name.lower())
+
+    if "ultra" in lowered:
+        return inference.get("intel_core_ultra", "unknown")
+
+    match = re.search(r"\bi[3579][\s-]*(\d{2})\d{2,3}", lowered)
+    if match:
+        return inference.get("intel_series", {}).get(match.group(1), "unknown")
+
+    match = re.search(r"\bryzen\s+\d\s+(\d)\d{3}", lowered)
+    if match:
+        return inference.get("amd_series_digit", {}).get(match.group(1), "unknown")
+
+    return "unknown"
+
+
 def _cpu_heuristic(profile: HardwareProfile, db: Database) -> float:
     h = db.cpu_db.get("heuristic", {})
     base = h.get("base", 30)
@@ -195,7 +219,13 @@ def _cpu_heuristic(profile: HardwareProfile, db: Database) -> float:
     effective_threads = min(profile.threads or profile.cores or 4, cap)
     clock = profile.max_clock_ghz or 3.6
     score = base + effective_threads * per_thread + clock * per_ghz
-    return score * h.get("gen_multiplier", {}).get("unknown", 0.85)
+
+    generation = infer_generation(profile.cpu_name, db)
+    score *= h.get("gen_multiplier", {}).get(generation, 0.85)
+    if "x3d" in profile.cpu_name.lower():
+        # The stacked cache is worth far more in Battlefield than clocks are.
+        score *= h.get("name_inference", {}).get("x3d_multiplier", 1.14)
+    return score
 
 
 def match_cpu(profile: HardwareProfile, db: Database) -> dict[str, Any]:
@@ -231,18 +261,57 @@ def _resolution_cost(width: int, height: int) -> float:
     return ((width * height) / _REFERENCE_PIXELS) ** _RES_EXPONENT
 
 
+# DDR5 starts at 4800 MT/s; anything at or above this is DDR5, below it DDR4.
+_DDR5_FLOOR = 4000
+
+
+def memory_verdict(profile: HardwareProfile) -> dict[str, Any]:
+    """Is the memory running at its rated speed, or at the JEDEC fallback?
+
+    This needs to know which DDR generation it is looking at. DDR4 at 2133 and
+    DDR5 at 4800 are the same situation - a kit sitting at the JEDEC default
+    because XMP/EXPO was never switched on - but a flat 'below 3000 MT/s' rule
+    calls the DDR5 case healthy, which is exactly backwards.
+    """
+    speed = profile.ram_speed_mts
+    if not speed:
+        return {"generation": "unknown", "underclocked": False, "target": 0, "penalty": 1.0,
+                "reason": ""}
+
+    if speed >= _DDR5_FLOOR:
+        generation, target = "DDR5", 6000
+        if speed <= 5200:
+            return {"generation": generation, "underclocked": True, "target": target,
+                    "penalty": 0.90,
+                    "reason": f"DDR5 running at {speed} MT/s, the JEDEC default (EXPO/XMP likely off)"}
+        if speed < 5600:
+            return {"generation": generation, "underclocked": False, "target": target,
+                    "penalty": 0.97, "reason": f"modest memory speed ({speed} MT/s)"}
+        return {"generation": generation, "underclocked": False, "target": target,
+                "penalty": 1.0, "reason": ""}
+
+    generation, target = "DDR4", 3600
+    if speed < 2800:
+        return {"generation": generation, "underclocked": True, "target": target, "penalty": 0.86,
+                "reason": f"DDR4 running at {speed} MT/s (XMP likely off)"}
+    if speed < 3200:
+        return {"generation": generation, "underclocked": False, "target": target, "penalty": 0.94,
+                "reason": f"modest memory speed ({speed} MT/s)"}
+    return {"generation": generation, "underclocked": False, "target": target, "penalty": 1.0,
+            "reason": ""}
+
+
 def _memory_penalty(profile: HardwareProfile) -> tuple[float, list[str]]:
     penalty, reasons = 1.0, []
     if profile.single_channel:
         penalty *= 0.78
         reasons.append("single-channel memory")
-    if profile.ram_speed_mts:
-        if profile.ram_speed_mts < 2800:
-            penalty *= 0.86
-            reasons.append(f"memory running at {profile.ram_speed_mts} MT/s (XMP/EXPO likely off)")
-        elif profile.ram_speed_mts < 3200:
-            penalty *= 0.94
-            reasons.append(f"modest memory speed ({profile.ram_speed_mts} MT/s)")
+
+    verdict = memory_verdict(profile)
+    penalty *= verdict["penalty"]
+    if verdict["reason"]:
+        reasons.append(verdict["reason"])
+
     if profile.ram_gb and profile.ram_gb < 16:
         penalty *= 0.85
         reasons.append(f"only {profile.ram_gb:g} GB of system RAM")
@@ -530,8 +599,8 @@ def _evaluate_tweaks(
         fires = False
         if trigger.get("always"):
             fires = True
-        if "ram_speed_below" in trigger and profile.ram_speed_mts:
-            fires = fires or profile.ram_speed_mts < trigger["ram_speed_below"]
+        if trigger.get("memory_underclocked"):
+            fires = fires or memory_verdict(profile)["underclocked"]
         if "vram_below" in trigger and profile.vram_gb:
             fires = fires or profile.vram_gb < trigger["vram_below"]
         if "ram_below_gb" in trigger and profile.ram_gb:
@@ -550,8 +619,10 @@ def _evaluate_tweaks(
             continue
 
         rendered = dict(tweak)
+        verdict = memory_verdict(profile)
         substitutions = {
             "{ram_speed}": str(profile.ram_speed_mts),
+            "{memory_target}": str(verdict["target"] or "its rated"),
             "{ram_gb}": f"{profile.ram_gb:g}",
             "{vram}": f"{profile.vram_gb:g}",
             "{driver_version}": profile.driver_version or "unknown",

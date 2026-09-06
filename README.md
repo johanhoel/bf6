@@ -33,7 +33,7 @@ prominently as the things it does.
 
 ## What it does
 
-**Detects** — CPU model, physical cores, logical threads, P-core/E-core split;
+**Detects** — CPU model (with the microarchitecture inferred from the model number when the exact part is not in the database), physical cores, logical threads, P-core/E-core split;
 GPU model, real VRAM (from the driver registry key, not the 4GB-capped WMI
 field), driver version; RAM capacity, speed and module count; native resolution
 and the panel's maximum refresh rate; which drive the game is installed on and
@@ -59,7 +59,7 @@ the single most common reason these files "do nothing"), and optionally patches
 `PROFSAVE_profile`. Both are snapshotted together first, and one click puts
 everything back.
 
-**Checks the system** — XMP/EXPO left off, single-channel memory, ReBAR, HAGS,
+**Checks the system** — XMP/EXPO left off (DDR-generation aware: DDR5 sitting at 4800 MT/s is the same fault as DDR4 at 2133), single-channel memory, ReBAR, HAGS,
 game on a mechanical drive, and so on, each with the reason and the fix. These
 are reported, never applied silently.
 
@@ -222,7 +222,7 @@ behaviour described above. `--help` lists everything.
 | File | Location | Notes |
 |---|---|---|
 | `User.cfg` | The **install** folder, next to the game executable | Not Documents. This trips up almost everyone. |
-| `PROFSAVE_profile` | `Documents\Battlefield 6\settings\` (`\steam\` on the Steam build) | May be redirected into OneDrive; the app checks there too. |
+| `PROFSAVE_profile` | `Documents\Battlefield 6\settings\` (`\steam\` or a per-account subfolder on some builds) | The app searches Documents, OneDrive-redirected Documents, `%LOCALAPPDATA%`, `%APPDATA%` and Saved Games, and picks the most recently written profile. If it still cannot find it, **Locate…** lets you point at it and remembers the path. |
 | Restore points | `%APPDATA%\BF6Tuner\backups\` | One timestamped folder per snapshot, holding both files and a manifest. Restorable in one click. |
 
 Close Battlefield 6 before writing either file — it rewrites its own settings on
@@ -265,7 +265,7 @@ only thing that needs changing.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests -q          # 70 tests
+python -m pytest tests -q          # 103 tests
 PYTHONPATH=src python -m bf6tuner --preset competitive   # CLI, runs on Linux too
 ```
 
@@ -279,6 +279,7 @@ bf6-configurator/
 ├── src/bf6tuner/
 │   ├── hardware.py       detection: CIM, registry, core topology, display modes
 │   ├── paths.py          finding the game and its two config files
+│   ├── prefs.py          remembered manual path overrides
 │   ├── engine.py         matching, frame rate model, setting selection, cfg policy
 │   ├── compare.py        current vs recommended, impact and trade-offs
 │   ├── writer.py         rendering, restore points, PROFSAVE patching, reports

@@ -7,39 +7,58 @@
       "id": "xmp_expo",
       "label": "Enable XMP / EXPO in BIOS",
       "scope": "bios",
-      "trigger": {"ram_speed_below": 3000},
+      "trigger": {
+        "memory_underclocked": true
+      },
       "severity": "high",
-      "why": "Your RAM is reporting {ram_speed} MT/s, which is the JEDEC fallback rather than the speed you paid for. Battlefield's 64-player servers are unusually sensitive to memory latency and bandwidth; running DDR4 at 2133 instead of 3600, or DDR5 at 4800 instead of 6000, typically costs 10-20% of your CPU-limited frame rate and considerably more in 1% lows.",
-      "how": "Reboot into BIOS/UEFI, find the XMP (Intel) or EXPO/DOCP (AMD) profile, select Profile 1, save and exit. This is a supported feature of your motherboard, not an overclock in the risky sense.",
+      "why": "Your RAM is reporting {ram_speed} MT/s, which is a JEDEC fallback rather than the speed you paid for - a kit like yours is normally rated around {memory_target} MT/s. Battlefield's 64-player servers are unusually sensitive to memory latency and bandwidth; running DDR5 at 4800 instead of 6000, or DDR4 at 2133 instead of 3600, typically costs 8-20% of your CPU-limited frame rate and more in 1% lows.",
+      "how": "Reboot into BIOS/UEFI, find the EXPO (AMD) or XMP (Intel) profile, select Profile 1, save and exit. This is a supported feature of your motherboard, not an overclock in the risky sense.",
       "value": "Usually the single largest free frame rate gain available on a machine that has it disabled."
     },
     {
       "id": "hags",
       "label": "Hardware-Accelerated GPU Scheduling",
       "scope": "windows",
-      "trigger": {"always": true},
+      "trigger": {
+        "always": true
+      },
       "severity": "medium",
       "why": "HAGS moves frame queue management onto the GPU. It is a prerequisite for NVIDIA frame generation, and on modern GPUs it usually shaves a little latency. On older cards it has historically been a stutter source.",
       "how": "Settings > System > Display > Graphics > Change default graphics settings > Hardware-accelerated GPU scheduling. Reboot after changing.",
-      "recommend_on_if": {"gpu_arch_in": ["ada", "blackwell", "rdna3", "rdna3.5", "rdna4", "battlemage"]},
+      "recommend_on_if": {
+        "gpu_arch_in": [
+          "ada",
+          "blackwell",
+          "rdna3",
+          "rdna3.5",
+          "rdna4",
+          "battlemage"
+        ]
+      },
       "value": "Small but real. Test both ways with the frame time graph if you are chasing stutter."
     },
     {
       "id": "game_mode",
       "label": "Windows Game Mode",
       "scope": "windows",
-      "trigger": {"always": true},
+      "trigger": {
+        "always": true
+      },
       "severity": "low",
       "why": "Game Mode suppresses background scheduled work while a game is in the foreground. On hybrid Intel CPUs it also feeds the Thread Director, which is the mechanism that decides what runs on P-cores versus E-cores — the same mechanism the User.cfg thread-count trick fights against.",
       "how": "Settings > Gaming > Game Mode > On.",
-      "recommend_on_if": {"always": true},
+      "recommend_on_if": {
+        "always": true
+      },
       "value": "Leave it on. Particularly important on hybrid CPUs."
     },
     {
       "id": "power_plan",
       "label": "Power plan set to High Performance / Balanced with minimum processor state raised",
       "scope": "windows",
-      "trigger": {"always": true},
+      "trigger": {
+        "always": true
+      },
       "severity": "low",
       "why": "Aggressive core parking and slow clock ramping show up as micro-stutter at the start of a firefight, precisely when frame time consistency matters.",
       "how": "Control Panel > Power Options > High performance. On a laptop, plug it in and set the Windows power slider to Best Performance.",
@@ -49,7 +68,19 @@
       "id": "resizable_bar",
       "label": "Resizable BAR / Smart Access Memory",
       "scope": "bios",
-      "trigger": {"gpu_arch_in": ["ampere", "ada", "blackwell", "rdna2", "rdna3", "rdna3.5", "rdna4", "alchemist", "battlemage"]},
+      "trigger": {
+        "gpu_arch_in": [
+          "ampere",
+          "ada",
+          "blackwell",
+          "rdna2",
+          "rdna3",
+          "rdna3.5",
+          "rdna4",
+          "alchemist",
+          "battlemage"
+        ]
+      },
       "severity": "medium",
       "why": "Lets the CPU address the whole of VRAM at once instead of in 256MB windows. Intel Arc in particular is severely handicapped without it — Arc cards can lose 20%+ of their performance with ReBAR off.",
       "how": "Enable 'Above 4G Decoding' and then 'Re-Size BAR Support' (Intel) or 'Smart Access Memory' (AMD) in BIOS. Requires UEFI boot mode, not legacy/CSM.",
@@ -59,7 +90,9 @@
       "id": "gpu_driver",
       "label": "GPU driver up to date",
       "scope": "driver",
-      "trigger": {"always": true},
+      "trigger": {
+        "always": true
+      },
       "severity": "medium",
       "why": "Battlefield launches ship with day-one driver optimisations, and BF6's DX12 path has had several driver-side stutter fixes. An old driver is a common cause of problems people then try to fix with User.cfg.",
       "how": "NVIDIA App / AMD Adrenalin / Intel Arc Control > check for updates. Detected driver version: {driver_version}.",
@@ -69,7 +102,9 @@
       "id": "install_on_ssd",
       "label": "Install Battlefield 6 on an SSD",
       "scope": "storage",
-      "trigger": {"install_on_hdd": true},
+      "trigger": {
+        "install_on_hdd": true
+      },
       "severity": "high",
       "why": "Battlefield 6 streams textures and geometry during play. On a mechanical drive that streaming cannot keep up, producing texture pop-in, long hitches when you spawn or enter a new area, and slow map loads that put you into a match late.",
       "how": "Move the install to an SSD or NVMe drive. In Steam: right-click the game > Properties > Installed Files > Move install folder.",
@@ -79,7 +114,9 @@
       "id": "vram_headroom",
       "label": "VRAM headroom check",
       "scope": "gpu",
-      "trigger": {"vram_below": 8},
+      "trigger": {
+        "vram_below": 8
+      },
       "severity": "high",
       "why": "Your GPU has {vram} GB of VRAM. Battlefield 6 at High textures wants more than that at 1440p and above. When VRAM runs out the driver spills to system memory over PCIe, which shows up as severe periodic hitching rather than a lower average frame rate.",
       "how": "Textures have been capped for you. Also close browser tabs with video playing — they hold VRAM.",
@@ -89,7 +126,9 @@
       "id": "ram_capacity",
       "label": "System RAM capacity",
       "scope": "memory",
-      "trigger": {"ram_below_gb": 16},
+      "trigger": {
+        "ram_below_gb": 16
+      },
       "severity": "high",
       "why": "You have {ram_gb} GB of system RAM. Battlefield 6 plus Windows plus a browser exceeds that, and the resulting page file traffic is felt as hitching.",
       "how": "16 GB is the practical floor, 32 GB is the comfortable target if you also stream or keep Chrome open.",
@@ -99,7 +138,9 @@
       "id": "dual_channel",
       "label": "Dual-channel memory",
       "scope": "memory",
-      "trigger": {"single_channel": true},
+      "trigger": {
+        "single_channel": true
+      },
       "severity": "high",
       "why": "Your memory appears to be running in single channel, which halves memory bandwidth. This is the most common configuration error in prebuilt and laptop systems.",
       "how": "Fit a second identical stick, in the correct slot pair for your board (usually slots 2 and 4).",
@@ -109,7 +150,9 @@
       "id": "ccd_preference",
       "label": "Park the non-cache CCD (dual-CCD X3D)",
       "scope": "windows",
-      "trigger": {"cpu_dual_ccd_x3d": true},
+      "trigger": {
+        "cpu_dual_ccd_x3d": true
+      },
       "severity": "medium",
       "why": "Your CPU has two chiplets and only one of them carries the 3D V-Cache. When the game's threads get spread across both, cross-chiplet latency costs you more than the extra cores gain. This is the legitimate version of the problem that the User.cfg thread-count trick is trying and failing to solve.",
       "how": "Keep the AMD chipset driver and Xbox Game Bar installed (that is how Windows identifies the game and prefers the cache CCD), or use Process Lasso to pin Battlefield 6 to the cache-carrying CCD. Do not use Thread.ProcessorCount for this.",
@@ -119,7 +162,9 @@
       "id": "ecore_policy",
       "label": "Leave E-cores enabled",
       "scope": "bios",
-      "trigger": {"cpu_hybrid": true},
+      "trigger": {
+        "cpu_hybrid": true
+      },
       "severity": "medium",
       "why": "Battlefield 6 is well threaded and puts real work on E-cores — audio, streaming and job-system work that would otherwise contend with the render thread. Disabling them in BIOS, or parking them via a User.cfg thread cap, has been measured to cost around 20% of 1% low FPS on hybrid parts. That is stutter, even when the average FPS barely moves.",
       "how": "Leave E-cores enabled in BIOS. This app will not write thread-count overrides on your CPU for the same reason.",
@@ -129,7 +174,9 @@
       "id": "fullscreen_optimizations",
       "label": "Disable fullscreen optimisations for the game executable",
       "scope": "windows",
-      "trigger": {"always": true},
+      "trigger": {
+        "always": true
+      },
       "severity": "low",
       "why": "Windows can silently substitute a borderless composited path for true exclusive fullscreen, adding a frame of latency.",
       "how": "Right-click the Battlefield 6 executable > Properties > Compatibility > tick 'Disable fullscreen optimisations'.",
@@ -139,7 +186,9 @@
       "id": "overlays",
       "label": "Trim overlays",
       "scope": "windows",
-      "trigger": {"always": true},
+      "trigger": {
+        "always": true
+      },
       "severity": "low",
       "why": "Discord, Steam, GeForce Experience, MSI Afterburner/RTSS and browser hardware acceleration all hook the presentation path. Stacking several of them is a well-known source of stutter and of the crashes people then blame on the game.",
       "how": "Keep at most one overlay running. If you are diagnosing stutter, turn all of them off first and add them back one at a time.",

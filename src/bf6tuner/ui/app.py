@@ -21,14 +21,16 @@ from PySide6.QtWidgets import (
 )
 
 from .. import APP_NAME, __version__
-from .. import compare, database, hardware, paths, writer
+from .. import compare, database, hardware, paths, prefs, writer
 from ..engine import PRESETS, Recommendation, Target, recommend
 from . import theme
+from .locate import LocateDialog
 from .restore import RestoreDialog
 
 RESOLUTIONS = [
     ("1920x1080", 1920, 1080), ("2560x1080", 2560, 1080), ("2560x1440", 2560, 1440),
     ("3440x1440", 3440, 1440), ("3840x1600", 3840, 1600), ("3840x2160", 3840, 2160),
+    ("5120x1440", 5120, 1440), ("5120x2160", 5120, 2160),
 ]
 PRESET_BLURB = {
     "esports": "Frames above all else",
@@ -66,7 +68,7 @@ class DetectWorker(QThread):
 
     def run(self) -> None:
         try:
-            self.finished_ok.emit(hardware.detect(), paths.discover())
+            self.finished_ok.emit(hardware.detect(), paths.discover(prefs.load()))
         except Exception:
             self.failed.emit(traceback.format_exc())
 
@@ -126,9 +128,8 @@ class MainWindow(QMainWindow):
 
     def _build_sidebar(self) -> QWidget:
         panel = QWidget()
-        panel.setFixedWidth(372)
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(0, 0, 8, 0)
         layout.setSpacing(14)
 
         hw_card, hw_layout = card("Your machine")
@@ -179,6 +180,7 @@ class MainWindow(QMainWindow):
 
         form.addWidget(dim("Resolution"), 0, 0)
         self.resolution_box = QComboBox()
+        self.resolution_box.setMinimumHeight(30)
         for label, _, _ in RESOLUTIONS:
             self.resolution_box.addItem(label)
         self.resolution_box.currentIndexChanged.connect(self.refresh)
@@ -186,6 +188,7 @@ class MainWindow(QMainWindow):
 
         form.addWidget(dim("Refresh rate"), 1, 0)
         self.refresh_box = QSpinBox()
+        self.refresh_box.setMinimumHeight(30)
         self.refresh_box.setRange(30, 600)
         self.refresh_box.setSuffix(" Hz")
         self.refresh_box.setValue(144)
@@ -215,7 +218,15 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(target_card)
         layout.addStretch(1)
-        return panel
+
+        # Scroll rather than squash: the window can be shorter than this column.
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFixedWidth(390)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setWidget(panel)
+        return scroll
 
     def _build_main_panel(self) -> QWidget:
         panel = QWidget()
@@ -319,6 +330,13 @@ class MainWindow(QMainWindow):
         self.path_label.setObjectName("Mono")
         self.path_label.setWordWrap(True)
         row.addWidget(self.path_label, 1)
+
+        self.locate_button = QPushButton("Locate files...")
+        self.locate_button.setToolTip(
+            "Point the app at PROFSAVE_profile or the game folder by hand. Remembered afterwards."
+        )
+        self.locate_button.clicked.connect(self.locate_files)
+        row.addWidget(self.locate_button)
 
         self.backup_button = QPushButton("Back up now")
         self.backup_button.setToolTip("Snapshot both config files without changing anything.")
@@ -527,9 +545,12 @@ class MainWindow(QMainWindow):
         self.tabs.setTabText(4, f"System checks ({len(rec.tweaks)})")
 
         target_path = self.game.user_cfg or Path("(install folder not found)")
+        cfg_mark = "  [set by hand]" if "install_dir" in self.game.overridden else ""
+        profsave_mark = "  [set by hand]" if "profsave" in self.game.overridden else ""
         self.path_label.setText(
-            f"User.cfg -> {target_path}\n"
-            f"In-game  -> {self.game.profsave or '(PROFSAVE_profile not found)'}"
+            f"User.cfg -> {target_path}{cfg_mark}\n"
+            f"In-game  -> {self.game.profsave or '(PROFSAVE_profile not found - use Locate...)'}"
+            f"{profsave_mark}"
         )
         self.apply_button.setText(
             "Apply everything" if self.game.profsave else "Apply User.cfg"
@@ -570,6 +591,14 @@ class MainWindow(QMainWindow):
                 summary_layout.addWidget(dim(f"Read from {comparison.profsave_path}"))
         else:
             summary_layout.addWidget(dim(comparison.reason_unavailable))
+            if self.game.searched:
+                summary_layout.addWidget(dim(self.game.search_summary()))
+            locate = QPushButton("Locate PROFSAVE_profile...")
+            locate.clicked.connect(self.locate_files)
+            button_row = QHBoxLayout()
+            button_row.addWidget(locate)
+            button_row.addStretch(1)
+            summary_layout.addLayout(button_row)
         layout.addWidget(summary)
 
         for change in comparison.changes:
@@ -720,6 +749,12 @@ class MainWindow(QMainWindow):
             f"Restore point taken {point.stamp}.\n\n{point.describe()}\n\n{point.directory}",
         )
         self.statusBar().showMessage(f"Restore point taken {point.stamp}")
+
+    def locate_files(self) -> None:
+        dialog = LocateDialog(self.game, self)
+        dialog.exec()
+        if dialog.changed:
+            self.redetect()
 
     def open_restore(self) -> None:
         dialog = RestoreDialog(self)

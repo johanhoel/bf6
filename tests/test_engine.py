@@ -271,3 +271,80 @@ def test_every_preset_produces_output(db):
 def test_unknown_preset_rejected(db):
     with pytest.raises(ValueError):
         recommend(db, make_profile(), Target(preset="ultra-mega"))
+
+
+# -- CPU generation inference and memory verdicts ---------------------------
+# Added after a real machine (Ryzen 7 9850X3D, DDR5-4800) was scored as an
+# unknown CPU and as having healthy memory. Both were wrong, and together they
+# flipped the reported bottleneck.
+
+from bf6tuner.engine import infer_generation, memory_verdict  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        ("AMD Ryzen 7 9850X3D 8-Core Processor", "zen5"),
+        ("AMD Ryzen 5 7600 6-Core Processor", "zen4"),
+        ("AMD Ryzen 9 5900X 12-Core Processor", "zen3"),
+        ("13th Gen Intel(R) Core(TM) i7-13700K", "raptorlake"),
+        ("Intel(R) Core(TM) i5-12400", "alderlake"),
+        ("Intel(R) Core(TM) Ultra 9 285K", "arrowlake"),
+        ("Some Unbranded CPU", "unknown"),
+    ],
+)
+def test_generation_inferred_from_the_model_number(db, name, expected):
+    assert infer_generation(name, db) == expected
+
+
+def test_unlisted_modern_cpu_is_not_scored_as_ancient(db):
+    modern = match_cpu(make_profile(cpu_name="AMD Ryzen 7 9950X3D2 16-Core Processor",
+                                    cores=16, threads=32, max_clock_ghz=5.7), db)
+    old = match_cpu(make_profile(cpu_name="AMD Ryzen 7 2700X Eight-Core Processor",
+                                 cores=8, threads=16, max_clock_ghz=4.3), db)
+    assert modern["score"] > old["score"] * 1.5
+
+
+def test_x3d_naming_is_worth_something_in_the_heuristic(db):
+    with_cache = match_cpu(make_profile(cpu_name="AMD Ryzen 5 9650X3D 6-Core Processor",
+                                        cores=6, threads=12, max_clock_ghz=5.2), db)
+    without = match_cpu(make_profile(cpu_name="AMD Ryzen 5 9650X 6-Core Processor",
+                                     cores=6, threads=12, max_clock_ghz=5.2), db)
+    assert not with_cache["matched"] and not without["matched"]
+    assert with_cache["score"] > without["score"]
+
+
+@pytest.mark.parametrize(
+    "speed,generation,underclocked",
+    [
+        (4800, "DDR5", True),    # JEDEC default - EXPO never switched on
+        (5200, "DDR5", True),
+        (6000, "DDR5", False),
+        (6400, "DDR5", False),
+        (2133, "DDR4", True),    # JEDEC default - XMP never switched on
+        (3000, "DDR4", False),
+        (3600, "DDR4", False),
+    ],
+)
+def test_memory_verdict_understands_both_ddr_generations(db, speed, generation, underclocked):
+    verdict = memory_verdict(make_profile(ram_speed_mts=speed))
+    assert verdict["generation"] == generation
+    assert verdict["underclocked"] is underclocked
+
+
+def test_ddr5_at_jedec_speed_raises_the_expo_check(db):
+    """The old 'below 3000 MT/s' rule called DDR5-4800 healthy, which is backwards."""
+    profile = make_profile(
+        cpu_name="AMD Ryzen 7 9850X3D 8-Core Processor", ram_speed_mts=4800, ram_gb=64.0,
+        ram_sticks=[MemoryStick(32, 4800, "A1"), MemoryStick(32, 4800, "B1")],
+    )
+    rec = recommend(db, profile, Target(preset="competitive"))
+    assert any(t["id"] == "xmp_expo" for t in rec.tweaks)
+    expo = next(t for t in rec.tweaks if t["id"] == "xmp_expo")
+    assert "6000" in expo["why"], "the advice should name the speed to aim for"
+    assert "4800" in expo["why"]
+
+
+def test_unknown_memory_speed_is_not_treated_as_a_fault(db):
+    verdict = memory_verdict(make_profile(ram_speed_mts=0))
+    assert verdict["underclocked"] is False and verdict["penalty"] == 1.0
