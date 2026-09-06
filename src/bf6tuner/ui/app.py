@@ -304,7 +304,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.comparison_area, "Current vs recommended")
 
         self.settings_table = self._make_table(
-            ["Setting", "Value", "", "Why"], [250, 200, 84, -1]
+            ["Setting", "Value", "", "Why"], [250, 200, 155, -1]
         )
         self.settings_table.verticalHeader().setDefaultSectionSize(38)
         self.tabs.addTab(self._build_settings_tab(), "In-game settings")
