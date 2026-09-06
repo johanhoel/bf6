@@ -251,3 +251,14 @@ def test_json_export_includes_the_comparison(db, rec):
 
 def test_report_without_a_comparison_still_renders(db, rec):
     assert "CURRENT vs RECOMMENDED" not in writer.render_report(rec)
+
+
+def test_comparison_uses_the_overridden_values(db):
+    """An override is what will be written, so it is what the diff must show."""
+    forced = recommend(db, make_profile(), Target(preset="competitive", width=2560,
+                                                  height=1440, refresh_hz=165),
+                       overrides={"shadow_quality": 3})
+    c = compare.build(db, forced, ULTRA_PROFSAVE, "")
+    shadows = change_for(c, "shadow_quality")
+    assert shadows is None, "current is Ultra and the override is Ultra, so nothing changes"
+    assert any(u.setting_id == "shadow_quality" for u in c.unchanged)

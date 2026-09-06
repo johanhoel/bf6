@@ -3,6 +3,8 @@ src/bf6tuner/_keyring.py
 packaging/_build/
 dist/
 build/
+/BF6Tuner.exe
+/BF6Tuner-cli.exe
 
 # Python
 .venv/

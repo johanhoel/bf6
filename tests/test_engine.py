@@ -348,3 +348,120 @@ def test_ddr5_at_jedec_speed_raises_the_expo_check(db):
 def test_unknown_memory_speed_is_not_treated_as_a_fault(db):
     verdict = memory_verdict(make_profile(ram_speed_mts=0))
     assert verdict["underclocked"] is False and verdict["penalty"] == 1.0
+
+
+# -- per-setting overrides ---------------------------------------------------
+# The recommendation is a starting point, not a verdict: any value can be
+# changed, and the estimate has to follow rather than keep describing settings
+# nobody is using.
+
+def test_override_replaces_the_value_and_records_what_was_recommended(db):
+    auto = recommend(db, make_profile(), Target(preset="competitive"))
+    baseline = next(c for c in auto.settings if c.setting_id == "shadow_quality")
+
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       overrides={"shadow_quality": 3})
+    shadows = next(c for c in forced.settings if c.setting_id == "shadow_quality")
+    assert shadows.value == 3 and shadows.display == "Ultra"
+    assert shadows.overridden
+    assert shadows.recommended_value == baseline.value
+    assert forced.overrides == {"shadow_quality": 3}
+
+
+def test_raising_a_setting_costs_frames_in_the_estimate(db):
+    auto = recommend(db, make_profile(), Target(preset="competitive"))
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       overrides={"shadow_quality": 3, "effects_quality": 3})
+    assert forced.predicted_fps < auto.predicted_fps
+
+
+def test_lowering_a_setting_gains_frames_in_the_estimate(db):
+    auto = recommend(db, make_profile(), Target(preset="quality"))
+    forced = recommend(db, make_profile(), Target(preset="quality"),
+                       overrides={"shadow_quality": 0, "effects_quality": 0,
+                                  "vegetation_quality": 0})
+    assert forced.predicted_fps > auto.predicted_fps
+
+
+def test_frame_cap_follows_an_override(db):
+    auto = recommend(db, make_profile(), Target(preset="competitive"))
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       overrides={"shadow_quality": 3, "lighting_quality": 3,
+                                  "effects_quality": 3})
+    assert forced.frame_cap < auto.frame_cap
+    cap_setting = next(c for c in forced.settings if c.setting_id == "frame_limit")
+    assert cap_setting.value == forced.frame_cap
+    written = {line.key: line.value for line in forced.cfg if line.key}
+    assert written["GameTime.MaxVariableFps"] == forced.frame_cap
+
+
+def test_a_pinned_frame_cap_is_not_overwritten(db):
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       overrides={"shadow_quality": 3, "frame_limit": 90})
+    cap_setting = next(c for c in forced.settings if c.setting_id == "frame_limit")
+    assert cap_setting.value == 90 and cap_setting.overridden
+    written = {line.key: line.value for line in forced.cfg if line.key}
+    assert written["GameTime.MaxVariableFps"] == 90
+
+
+def test_settings_the_app_never_writes_cannot_be_overridden(db):
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       overrides={"mouse_sensitivity": 42, "ads_sensitivity": 7})
+    for setting_id in ("mouse_sensitivity", "ads_sensitivity"):
+        choice = next(c for c in forced.settings if c.setting_id == setting_id)
+        assert choice.value == "keep" and not choice.overridden
+    assert forced.overrides == {}
+
+
+def test_personal_but_written_settings_can_be_overridden(db):
+    """Field of view and brightness are the ones people most want to set."""
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       overrides={"field_of_view": 100, "brightness": 60})
+    fov = next(c for c in forced.settings if c.setting_id == "field_of_view")
+    assert fov.value == 100 and fov.overridden
+    assert forced.predicted_fps > 0
+
+
+def test_override_matching_the_recommendation_is_not_flagged(db):
+    auto = recommend(db, make_profile(), Target(preset="competitive"))
+    same = next(c for c in auto.settings if c.setting_id == "shadow_quality").value
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       overrides={"shadow_quality": same})
+    assert forced.overrides == {}
+    assert not next(c for c in forced.settings if c.setting_id == "shadow_quality").overridden
+
+
+def test_overrides_survive_a_preset_change(db):
+    for preset in ("esports", "competitive", "balanced", "quality"):
+        forced = recommend(db, make_profile(), Target(preset=preset),
+                           overrides={"texture_quality": 0})
+        textures = next(c for c in forced.settings if c.setting_id == "texture_quality")
+        assert textures.value == 0 and textures.overridden
+
+
+def test_string_values_from_a_settings_file_are_coerced(db):
+    """Overrides come back from JSON, so an int can arrive as a string."""
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       overrides={"shadow_quality": "3"})
+    assert next(c for c in forced.settings if c.setting_id == "shadow_quality").value == 3
+
+
+def test_a_nonsense_override_does_not_crash(db):
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       overrides={"shadow_quality": "banana", "not_a_setting": 1})
+    assert forced.predicted_fps > 0
+
+
+def test_overrides_are_announced(db):
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       overrides={"shadow_quality": 3})
+    assert any("overridden by you" in w.title for w in forced.warnings)
+
+
+def test_overridden_values_flow_into_the_profsave_plan(db):
+    from bf6tuner import writer
+
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       overrides={"shadow_quality": 3})
+    plan = writer.profsave_plan(forced, {"GstRender.ShadowQuality": "0"})
+    assert ("GstRender.ShadowQuality", "0", "3") in plan
