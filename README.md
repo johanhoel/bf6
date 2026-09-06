@@ -49,13 +49,91 @@ Balanced, Quality), with textures capped to your VRAM, an upscaler mode chosen
 from your GPU vendor and the gap to your target, and a frame cap computed from
 your refresh rate and what the machine can actually hold.
 
+**Compares** — reads your *current* settings out of `PROFSAVE_profile` and your
+existing `User.cfg`, then shows every single change side by side with what it
+costs, what it buys and what the argument against it is. Nothing is applied
+before you have seen that list. See below.
+
 **Writes** — `User.cfg` into the game folder (with the right extension, which is
 the single most common reason these files "do nothing"), and optionally patches
-`PROFSAVE_profile`. Both are backed up first, and both can be restored.
+`PROFSAVE_profile`. Both are snapshotted together first, and one click puts
+everything back.
 
 **Checks the system** — XMP/EXPO left off, single-channel memory, ReBAR, HAGS,
 game on a mechanical drive, and so on, each with the reason and the fix. These
 are reported, never applied silently.
+
+## Current vs recommended
+
+The first tab is a diff of your machine against the recommendation, and it is
+where the app expects you to spend your time. For every setting that would
+change it shows:
+
+```
+Shadow Quality          Ultra  →  Medium          +8 FPS, GPU -19.0% frame time, CPU -5.5%
+  + The single largest frame rate lever here: Ultra to Low is routinely 15-25%
+  + Also saves CPU, because shadow maps mean extra draw calls
+  − Shadows cast around corners are genuine information, and Low removes some of them
+  − Visible shadow shimmer and pop-in at range
+  Why: ...
+```
+
+Changes are ranked by how much they are actually worth, so the top of the list
+is where your frames are. Alongside them the tab lists what is **already
+correct**, what is **left alone because it is yours** (mouse sensitivity, ADS
+sensitivity, audio mix — the app never touches these), and what is **not stored
+in the profile** and therefore cannot be compared.
+
+The `User.cfg` half of the diff shows additions, changes, *and removals* —
+because saving rewrites the whole file, so an existing line the app does not
+manage would disappear. It says so rather than letting you find out later.
+
+### How the impact numbers work
+
+Every setting carries a cost curve in percent of frame time per option. A
+configuration's frame time is the baseline plus the sum of its options' costs,
+which is what makes it valid to compare two whole configurations rather than
+just summing pairwise deltas — summing deltas double-counts and saturates as
+soon as several expensive settings move at once.
+
+The engine already sized the *recommended* settings against your real hardware,
+so the current frame rate is derived from that same model by the frame time
+ratio. One model, both numbers, no chance of the two disagreeing.
+
+Two honest caveats, which the app states on screen as well:
+
+- Per-change FPS figures are **marginal** — what that change is worth on its
+  own. They will not sum to the total.
+- A change showing **0 FPS** is one the other side of the bottleneck absorbs.
+  On a CPU-limited machine, lowering post-processing genuinely does nothing, and
+  the app would rather tell you that than pad the number.
+
+## Backup and recovery
+
+Every write is preceded by a **restore point**: a single timestamped folder
+holding `User.cfg` and `PROFSAVE_profile` captured at the same moment, plus a
+manifest. Because both files are in one snapshot, undoing is one action rather
+than two that can end up half-applied.
+
+- **Back up now** takes a restore point without changing anything.
+- **Apply everything** takes one automatically, then writes both files.
+- **Restore…** lists every snapshot with its timestamp and contents; pick one,
+  confirm, done.
+
+A restore point also records files that *did not exist* when it was taken, so
+restoring deletes a `User.cfg` the app created rather than leaving it behind.
+That is the difference between an undo and a partial one. Snapshots live in
+`%APPDATA%\BF6Tuner\backups\` and the oldest are pruned past 40.
+
+From the command line:
+
+```
+BF6Tuner.exe --backup                    # snapshot both files, change nothing
+BF6Tuner.exe --list-restore-points       # newest first
+BF6Tuner.exe --restore latest            # or --restore 20260906-113000
+```
+
+Applying from the CLI prints the exact `--restore` command that undoes it.
 
 ## Getting the executable
 
@@ -112,7 +190,12 @@ BF6Tuner.exe --preset competitive --resolution 2560x1440 --refresh 165
 BF6Tuner.exe --preset esports --apply --apply-ingame
 BF6Tuner.exe --preset balanced --report report.txt --json report.json
 BF6Tuner.exe --print-cfg > User.cfg
+BF6Tuner.exe --backup
+BF6Tuner.exe --restore latest
 ```
+
+The report and the JSON export both include the full current-vs-recommended
+comparison, with the pros and cons for every change. `--no-compare` omits it.
 
 `--allow-thread-overrides`, `--allow-frame-gen` and `--legacy` unlock the opt-in
 behaviour described above. `--help` lists everything.
@@ -123,7 +206,7 @@ behaviour described above. `--help` lists everything.
 |---|---|---|
 | `User.cfg` | The **install** folder, next to the game executable | Not Documents. This trips up almost everyone. |
 | `PROFSAVE_profile` | `Documents\Battlefield 6\settings\` (`\steam\` on the Steam build) | May be redirected into OneDrive; the app checks there too. |
-| Backups | `%APPDATA%\BF6Tuner\backups\` | Timestamped, restorable from the GUI. |
+| Restore points | `%APPDATA%\BF6Tuner\backups\` | One timestamped folder per snapshot, holding both files and a manifest. Restorable in one click. |
 
 Close Battlefield 6 before writing either file — it rewrites its own settings on
 exit and will discard anything written while it is running. The app checks and
@@ -137,8 +220,8 @@ Five JSON datasets under `data/`, encrypted into one bundle at build time:
 |---|---|
 | `gpu_db.json` | 78 GPUs — VRAM, relative BF6 performance index, DLSS/FSR/XeSS support, frame-generation capability, ray tracing strength |
 | `cpu_db.json` | 60 CPUs — core/thread counts, hybrid topology, X3D and chiplet layout, estimated CPU-limited FPS, plus a fallback heuristic for anything not listed |
-| `cfg_commands.json` | 39 `User.cfg` commands, each with a **confidence level** (`documented` / `community` / `legacy`), a **risk level**, a hardware policy, and an explanation |
-| `ingame_settings.json` | 32 in-game settings with per-preset values, VRAM gates, GPU/CPU/VRAM cost weights and the competitive trade-off for each |
+| `cfg_commands.json` | 39 `User.cfg` commands, each with a **confidence level** (`documented` / `community` / `legacy`), a **risk level**, a hardware policy, an explanation, and pros/cons for the 19 that are actually emitted |
+| `ingame_settings.json` | 32 in-game settings with per-preset values, VRAM gates, a per-option **cost curve** in percent of frame time, and **directional pros and cons** for raising or lowering each one |
 | `system_tweaks.json` | 14 OS/BIOS/driver checks with trigger conditions |
 
 Commands are marked `legacy` when they are real Frostbite console variables from
@@ -165,7 +248,7 @@ only thing that needs changing.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests -q          # 37 tests
+python -m pytest tests -q          # 70 tests
 PYTHONPATH=src python -m bf6tuner --preset competitive   # CLI, runs on Linux too
 ```
 
@@ -180,13 +263,14 @@ bf6-configurator/
 │   ├── hardware.py       detection: CIM, registry, core topology, display modes
 │   ├── paths.py          finding the game and its two config files
 │   ├── engine.py         matching, frame rate model, setting selection, cfg policy
-│   ├── writer.py         rendering, backups, PROFSAVE patching, reports
+│   ├── compare.py        current vs recommended, impact and trade-offs
+│   ├── writer.py         rendering, restore points, PROFSAVE patching, reports
 │   ├── crypto.py         AES-256-GCM bundle format
 │   ├── database.py       encrypted-bundle-first loader
 │   ├── cli.py            headless mode
-│   └── ui/               Qt window and theme
+│   └── ui/               Qt window, comparison view, restore dialog, theme
 ├── packaging/            build.py, build.bat, PyInstaller spec, icon generator
-└── tests/                engine policy and crypto tests
+└── tests/                engine policy, comparison, restore and crypto tests
 ```
 
 ## Sources

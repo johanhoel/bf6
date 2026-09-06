@@ -91,6 +91,9 @@ class SettingChoice:
     reason: str
     profsave_key: str | None = None
     personal: bool = False
+    # Some values are stored in the profile in different units to the ones shown
+    # (motion blur and brightness are 0.0-1.0 on disk, percentages in the UI).
+    profsave_scale: float = 1.0
 
 
 @dataclass
@@ -590,6 +593,7 @@ def recommend(
             settings.append(SettingChoice(
                 setting["id"], setting["label"], setting["menu"], "keep", "Leave as-is",
                 setting["note"], setting.get("profsave_key"), personal=True,
+                profsave_scale=float(setting.get("profsave_scale", 1.0)),
             ))
             continue
 
@@ -672,6 +676,7 @@ def recommend(
             setting_id=setting["id"], label=setting["label"], menu=setting["menu"],
             value=value, display=_label_for(setting, value), reason=reason,
             profsave_key=setting.get("profsave_key"), personal=bool(setting.get("personal")),
+            profsave_scale=float(setting.get("profsave_scale", 1.0)),
         ))
 
     cfg_lines, cfg_warnings = _build_cfg(

@@ -21,9 +21,10 @@ from PySide6.QtWidgets import (
 )
 
 from .. import APP_NAME, __version__
-from .. import database, hardware, paths, writer
+from .. import compare, database, hardware, paths, writer
 from ..engine import PRESETS, Recommendation, Target, recommend
 from . import theme
+from .restore import RestoreDialog
 
 RESOLUTIONS = [
     ("1920x1080", 1920, 1080), ("2560x1080", 2560, 1080), ("2560x1440", 2560, 1440),
@@ -77,6 +78,7 @@ class MainWindow(QMainWindow):
         self.profile = hardware.HardwareProfile()
         self.game = paths.GamePaths()
         self.rec: Recommendation | None = None
+        self.comparison: compare.Comparison | None = None
         self._loading = True
 
         self.setWindowTitle(f"{APP_NAME} {__version__} - Battlefield 6 configurator")
@@ -246,11 +248,17 @@ class MainWindow(QMainWindow):
         self.bottleneck_label.setFixedWidth(300)
         row.addWidget(self.bottleneck_label)
         pred_layout.addLayout(row)
+        self.before_after = QLabel("")
+        self.before_after.setWordWrap(True)
+        pred_layout.addWidget(self.before_after)
         self.prediction_note = dim("")
         pred_layout.addWidget(self.prediction_note)
         layout.addWidget(pred_card)
 
         self.tabs = QTabWidget()
+        self.comparison_area = self._make_scroll()
+        self.tabs.addTab(self.comparison_area, "Current vs recommended")
+
         self.settings_table = self._make_table(["Setting", "Value", "Why"], [260, 170, -1])
         self.tabs.addTab(self._wrap(self.settings_table), "In-game settings")
 
@@ -312,23 +320,31 @@ class MainWindow(QMainWindow):
         self.path_label.setWordWrap(True)
         row.addWidget(self.path_label, 1)
 
+        self.backup_button = QPushButton("Back up now")
+        self.backup_button.setToolTip("Snapshot both config files without changing anything.")
+        self.backup_button.clicked.connect(self.backup_now)
+        row.addWidget(self.backup_button)
+
+        self.restore_button = QPushButton("Restore...")
+        self.restore_button.setToolTip("Put your configuration back to an earlier snapshot.")
+        self.restore_button.clicked.connect(self.open_restore)
+        row.addWidget(self.restore_button)
+
         self.export_button = QPushButton("Export report")
         self.export_button.clicked.connect(self.export_report)
         row.addWidget(self.export_button)
 
-        self.restore_button = QPushButton("Restore backup")
-        self.restore_button.clicked.connect(self.restore_backup)
-        row.addWidget(self.restore_button)
-
-        self.ingame_button = QPushButton("Apply in-game settings")
-        self.ingame_button.setToolTip("Patches PROFSAVE_profile. Battlefield 6 must be closed.")
-        self.ingame_button.clicked.connect(self.apply_ingame)
-        row.addWidget(self.ingame_button)
-
-        self.save_button = QPushButton("Save User.cfg")
-        self.save_button.setObjectName("Primary")
+        self.save_button = QPushButton("Save User.cfg only")
         self.save_button.clicked.connect(self.save_user_cfg)
         row.addWidget(self.save_button)
+
+        self.apply_button = QPushButton("Apply everything")
+        self.apply_button.setObjectName("Primary")
+        self.apply_button.setToolTip(
+            "Writes User.cfg and the in-game settings, after taking one restore point covering both."
+        )
+        self.apply_button.clicked.connect(self.apply_everything)
+        row.addWidget(self.apply_button)
         return row
 
     # -- detection ---------------------------------------------------------
@@ -426,6 +442,9 @@ class MainWindow(QMainWindow):
             if self.game.install_drive else None
         )
         self.rec = recommend(self.db, self.profile, self.current_target(), install_drive_media=media)
+        self.comparison = compare.from_paths(
+            self.db, self.rec, self.game.profsave, self.game.user_cfg
+        )
         self._render()
 
     def _render(self) -> None:
@@ -443,6 +462,21 @@ class MainWindow(QMainWindow):
             f"<br><span style='color:{theme.TEXT_DIM}'>{rec.upscaler_tech}: "
             f"{rec.upscaler_mode.replace('_', ' ')}</span>"
         )
+        comparison = self.comparison
+        if comparison is not None and comparison.available:
+            delta_colour = theme.OK if comparison.fps_delta > 0 else (
+                theme.BAD if comparison.fps_delta < 0 else theme.TEXT_DIM)
+            self.before_after.setText(
+                f"<span style='color:{theme.TEXT_DIM}'>Right now you are running about</span> "
+                f"<b>{comparison.current_predicted} FPS</b>"
+                f"<span style='color:{theme.TEXT_DIM}'> &rarr; after applying, about </span>"
+                f"<b>{comparison.new_predicted} FPS</b>&nbsp;&nbsp;"
+                f"<span style='color:{delta_colour}; font-weight:700'>{comparison.fps_delta:+d}</span>"
+            )
+            self.before_after.setVisible(True)
+        else:
+            self.before_after.setVisible(False)
+
         note = (
             "Modelled estimate, not a measurement. Turn the in-game FPS overlay on and compare."
         )
@@ -483,15 +517,156 @@ class MainWindow(QMainWindow):
             for t in rec.tweaks
         ] or [("info", "Nothing to check", "No system-level issues detected.", None)])
 
-        self.tabs.setTabText(2, f"Warnings ({len(rec.warnings)})")
-        self.tabs.setTabText(3, f"System checks ({len(rec.tweaks)})")
+        self._fill_comparison()
+        changed = 0 if comparison is None else (
+            len(comparison.changes) + len([c for c in comparison.cfg_changes if c.action != "same"])
+        )
+        self.tabs.setTabText(0, f"Current vs recommended ({changed})" if changed
+                             else "Current vs recommended")
+        self.tabs.setTabText(3, f"Warnings ({len(rec.warnings)})")
+        self.tabs.setTabText(4, f"System checks ({len(rec.tweaks)})")
 
         target_path = self.game.user_cfg or Path("(install folder not found)")
         self.path_label.setText(
             f"User.cfg -> {target_path}\n"
             f"In-game  -> {self.game.profsave or '(PROFSAVE_profile not found)'}"
         )
-        self.ingame_button.setEnabled(self.game.profsave is not None)
+        self.apply_button.setText(
+            "Apply everything" if self.game.profsave else "Apply User.cfg"
+        )
+        self.apply_button.setEnabled(
+            self.game.user_cfg is not None or self.game.profsave is not None
+        )
+
+
+    def _fill_comparison(self) -> None:
+        comparison = self.comparison
+        container = self.comparison_area.widget()
+        layout = container.layout()
+        while layout.count():
+            item = layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        if comparison is None:
+            layout.addStretch(1)
+            return
+
+        summary, summary_layout = card("Summary")
+        headline = QLabel(comparison.headline)
+        headline.setWordWrap(True)
+        headline.setStyleSheet("font-size: 15px; font-weight: 600;")
+        summary_layout.addWidget(headline)
+        if comparison.available:
+            summary_layout.addWidget(dim(
+                f"Now: ~{comparison.current_predicted} FPS ({comparison.current_bottleneck}-limited, "
+                f"GPU {comparison.current_gpu_fps} / CPU {comparison.current_cpu_fps}). "
+                f"After: ~{comparison.new_predicted} FPS. "
+                "Per-change figures below are marginal - what each change is worth on its own - so "
+                "they will not sum to the total, and a change showing 0 FPS is one the other side of "
+                "the bottleneck absorbs."
+            ))
+            if comparison.profsave_path:
+                summary_layout.addWidget(dim(f"Read from {comparison.profsave_path}"))
+        else:
+            summary_layout.addWidget(dim(comparison.reason_unavailable))
+        layout.addWidget(summary)
+
+        for change in comparison.changes:
+            layout.addWidget(self._change_card(change))
+
+        if comparison.available:
+            for title, entries, describe in (
+                ("Already correct", comparison.unchanged, lambda c: c.label),
+                ("Left alone - yours to set", comparison.personal,
+                 lambda c: f"{c.label} (now {c.current_display})"),
+                ("Not stored in the profile, so not comparable", comparison.unknown,
+                 lambda c: f"{c.label} -> {c.new_display}"),
+            ):
+                if not entries:
+                    continue
+                frame, inner = card(f"{title} ({len(entries)})")
+                inner.addWidget(dim(", ".join(describe(c) for c in entries)))
+                layout.addWidget(frame)
+
+        active = [c for c in comparison.cfg_changes if c.action != "same"]
+        frame, inner = card(f"User.cfg - {len(active)} line(s) would change")
+        if not active:
+            inner.addWidget(dim("Your User.cfg already matches the recommendation."))
+        for change in active:
+            inner.addWidget(self._cfg_change_widget(change))
+        layout.addWidget(frame)
+        layout.addStretch(1)
+
+    def _change_card(self, change: compare.SettingChange) -> QWidget:
+        frame, inner = card("")
+        colour = theme.OK if change.fps_delta > 0 else (
+            theme.BAD if change.fps_delta < 0 else theme.TEXT_DIM)
+        arrow_colour = theme.WARN if change.direction == "lower" else theme.INFO
+        heading = QLabel(
+            f"<b>{change.label}</b>&nbsp;&nbsp;"
+            f"<span style='color:{theme.TEXT_DIM}'>{change.current_display}</span> "
+            f"<span style='color:{arrow_colour}'>&rarr;</span> "
+            f"<b>{change.new_display}</b>"
+        )
+        heading.setWordWrap(True)
+        inner.addWidget(heading)
+
+        impact = QLabel(
+            f"<span style='color:{colour}; font-weight:700'>{change.impact_summary}</span>"
+            f"&nbsp;&nbsp;<span style='color:{theme.TEXT_DIM}'>{change.menu}</span>"
+        )
+        impact.setWordWrap(True)
+        inner.addWidget(impact)
+
+        for pro in change.pros:
+            row = QLabel(f"<span style='color:{theme.OK}'>+</span>&nbsp; {pro}")
+            row.setWordWrap(True)
+            inner.addWidget(row)
+        for con in change.cons:
+            row = QLabel(f"<span style='color:{theme.WARN}'>&minus;</span>&nbsp; {con}")
+            row.setWordWrap(True)
+            inner.addWidget(row)
+        if change.reason:
+            inner.addWidget(dim("Why: " + change.reason))
+        return frame
+
+    def _cfg_change_widget(self, change: compare.CfgChange) -> QWidget:
+        holder = QWidget()
+        inner = QVBoxLayout(holder)
+        inner.setContentsMargins(0, 6, 0, 6)
+        inner.setSpacing(3)
+
+        if change.action == "add":
+            head = (f"<span style='color:{theme.OK}'>+</span> "
+                    f"<span style='font-family:{theme.MONO}'>{change.key} {change.new}</span>")
+        elif change.action == "change":
+            head = (f"<span style='color:{theme.INFO}'>~</span> "
+                    f"<span style='font-family:{theme.MONO}'>{change.key}</span> "
+                    f"<span style='color:{theme.TEXT_DIM}'>{change.current} &rarr;</span> "
+                    f"<b>{change.new}</b>")
+        else:
+            head = (f"<span style='color:{theme.BAD}'>-</span> "
+                    f"<span style='font-family:{theme.MONO}'>{change.key} {change.current}</span>"
+                    f"<span style='color:{theme.TEXT_DIM}'> &nbsp;removed - saving rewrites the "
+                    "whole file, and the restore point keeps it</span>")
+        label = QLabel(head)
+        label.setWordWrap(True)
+        inner.addWidget(label)
+
+        if change.summary:
+            inner.addWidget(dim(change.summary))
+        for pro in change.pros:
+            row = QLabel(f"<span style='color:{theme.OK}'>+</span>&nbsp; {pro}")
+            row.setWordWrap(True)
+            inner.addWidget(row)
+        for con in change.cons:
+            row = QLabel(f"<span style='color:{theme.WARN}'>&minus;</span>&nbsp; {con}")
+            row.setWordWrap(True)
+            inner.addWidget(row)
+        if change.risk in ("high", "unsafe") or change.confidence == "legacy":
+            inner.addWidget(dim(f"[{change.confidence or 'unknown'} / risk: {change.risk or 'unknown'}]"))
+        return holder
 
     def _fill_scroll(self, area: QScrollArea, items: list[tuple[str, str, str, str | None]]) -> None:
         container = area.widget()
@@ -528,6 +703,32 @@ class MainWindow(QMainWindow):
             return False
         return True
 
+    def _targets(self) -> dict[str, "Path | None"]:
+        return {"user_cfg": self.game.user_cfg, "profsave": self.game.profsave}
+
+    def backup_now(self) -> None:
+        point = writer.create_restore_point(self._targets(), "Manual backup")
+        if point is None:
+            QMessageBox.information(
+                self, "Nothing to back up",
+                "Neither User.cfg nor PROFSAVE_profile was found, so there is nothing to snapshot yet.",
+            )
+            return
+        writer.prune_restore_points()
+        QMessageBox.information(
+            self, "Backed up",
+            f"Restore point taken {point.stamp}.\n\n{point.describe()}\n\n{point.directory}",
+        )
+        self.statusBar().showMessage(f"Restore point taken {point.stamp}")
+
+    def open_restore(self) -> None:
+        dialog = RestoreDialog(self)
+        dialog.exec()
+        if dialog.restored:
+            # The files on disk changed, so the comparison is stale.
+            self.refresh()
+            self.statusBar().showMessage("Configuration restored.")
+
     def save_user_cfg(self) -> None:
         if self.rec is None or not self._guard_game_closed():
             return
@@ -538,98 +739,114 @@ class MainWindow(QMainWindow):
         )
         if not path:
             return
+        point = writer.create_restore_point({"user_cfg": Path(path), "profsave": self.game.profsave},
+                                            "Before saving User.cfg")
         try:
-            result = writer.write_user_cfg(self.rec, Path(path))
+            result = writer.write_user_cfg(self.rec, Path(path), restore_point=point)
         except Exception as exc:
             QMessageBox.critical(self, "Could not write User.cfg", str(exc))
             return
+        writer.prune_restore_points()
         detail = result.message
-        if result.backup:
-            detail += f"\n\nPrevious version backed up to:\n{result.backup}"
+        if point:
+            detail += f"\n\nRestore point taken first:\n{point.directory}"
         QMessageBox.information(self, "User.cfg saved", detail)
         self.statusBar().showMessage(result.message)
+        self.refresh()
 
-    def apply_ingame(self) -> None:
-        if self.rec is None or not self.game.profsave or not self._guard_game_closed():
+    def apply_everything(self) -> None:
+        if self.rec is None or self.comparison is None or not self._guard_game_closed():
             return
-        existing = writer.parse_profsave(
-            self.game.profsave.read_text(encoding="utf-8", errors="ignore")
-        )
-        plan = writer.profsave_plan(self.rec, existing)
-        if not plan:
-            QMessageBox.information(
-                self, "Nothing to change",
-                "None of the keys this app manages differ from your current profile. "
-                "Note that only keys already present in PROFSAVE_profile are ever touched.",
+
+        cfg_path = self.game.user_cfg
+        profsave = self.game.profsave
+        if cfg_path is None and profsave is None:
+            QMessageBox.warning(
+                self, "Nothing to write",
+                "Neither the game folder nor PROFSAVE_profile was found. Use 'Save User.cfg only' "
+                "and pick the install folder by hand.",
             )
             return
-        preview = "\n".join(f"  {key}: {old}  ->  {new}" for key, old, new in plan[:24])
-        if len(plan) > 24:
-            preview += f"\n  ... and {len(plan) - 24} more"
+
+        plan_lines: list[str] = []
+        profsave_plan: list[tuple[str, str, str]] = []
+        if profsave is not None:
+            existing = writer.parse_profsave(profsave.read_text(encoding="utf-8", errors="ignore"))
+            profsave_plan = writer.profsave_plan(self.rec, existing)
+            plan_lines.append(
+                f"In-game settings: {len(profsave_plan)} value(s) change in {profsave.name}"
+                if profsave_plan else "In-game settings: already match, nothing to write"
+            )
+        else:
+            plan_lines.append("In-game settings: PROFSAVE_profile not found, skipping")
+
+        if cfg_path is not None:
+            active = [c for c in self.comparison.cfg_changes if c.action != "same"]
+            removals = self.comparison.cfg_removals
+            plan_lines.append(f"User.cfg: {len(active)} line(s) change in {cfg_path}")
+            if removals:
+                plan_lines.append(
+                    f"  including {len(removals)} existing line(s) that will be removed: "
+                    + ", ".join(c.key for c in removals[:6])
+                    + (" ..." if len(removals) > 6 else "")
+                )
+
+        detail = "\n".join(plan_lines)
+        estimate = (
+            f"\n\nEstimated effect: {self.comparison.current_predicted} -> "
+            f"{self.comparison.new_predicted} FPS ({self.comparison.fps_delta:+d})."
+            if self.comparison.available else ""
+        )
         confirm = QMessageBox.question(
-            self, "Apply in-game settings",
-            f"{len(plan)} setting(s) will change in:\n{self.game.profsave}\n\n{preview}\n\n"
-            "A timestamped backup is written first. Continue?",
+            self, "Apply configuration",
+            f"{detail}{estimate}\n\nA restore point covering both files is taken first, and "
+            "'Restore...' puts everything back in one click.\n\nContinue?",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
         )
         if confirm != QMessageBox.Yes:
             return
-        try:
-            result = writer.write_profsave(self.rec, self.game.profsave)
-        except Exception as exc:
-            QMessageBox.critical(self, "Could not write settings", str(exc))
-            return
-        QMessageBox.information(
-            self, "In-game settings applied",
-            result.message + (f"\n\nBackup: {result.backup}" if result.backup else ""),
+
+        point = writer.create_restore_point(
+            self._targets(), f"Before applying {self.rec.target.preset}"
         )
+        messages: list[str] = []
+        try:
+            if cfg_path is not None:
+                messages.append(writer.write_user_cfg(self.rec, cfg_path, restore_point=point).message)
+            if profsave is not None and profsave_plan:
+                messages.append(writer.write_profsave(self.rec, profsave, restore_point=point).message)
+        except Exception as exc:
+            QMessageBox.critical(
+                self, "Apply failed",
+                f"{exc}\n\nNothing else was written. Use 'Restore...' if you need to roll back.",
+            )
+            return
+
+        writer.prune_restore_points()
+        if point:
+            messages.append(f"\nRestore point: {point.stamp}\n{point.directory}")
+        QMessageBox.information(self, "Applied", "\n".join(messages) or "Nothing needed changing.")
+        self.statusBar().showMessage("Configuration applied.")
+        self.refresh()
 
     def export_report(self) -> None:
         if self.rec is None:
             return
-        path, selected = QFileDialog.getSaveFileName(
+        path, _ = QFileDialog.getSaveFileName(
             self, "Export report", str(Path.home() / "bf6-tuner-report.txt"),
             "Text report (*.txt);;JSON (*.json)",
         )
         if not path:
             return
         target = Path(path)
-        content = writer.render_json(self.rec) if target.suffix.lower() == ".json" \
-            else writer.render_report(self.rec)
+        content = (
+            writer.render_json(self.rec, self.comparison)
+            if target.suffix.lower() == ".json"
+            else writer.render_report(self.rec, self.comparison)
+        )
         target.write_text(content, encoding="utf-8")
         self.statusBar().showMessage(f"Report written to {target}")
         QMessageBox.information(self, "Report exported", str(target))
-
-    def restore_backup(self) -> None:
-        options = [("user_cfg", self.game.user_cfg), ("profsave", self.game.profsave)]
-        entries: list[tuple[Path, Path]] = []
-        for tag, destination in options:
-            if destination is None:
-                continue
-            for backup in writer.list_backups(tag):
-                entries.append((backup, destination))
-        if not entries:
-            QMessageBox.information(
-                self, "No backups", f"Nothing has been backed up yet.\n\n{writer.backup_root()}"
-            )
-            return
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Choose a backup to restore", str(writer.backup_root()), "Backups (*.bak)"
-        )
-        if not path:
-            return
-        backup = Path(path)
-        destination = next((d for b, d in entries if b == backup), None)
-        if destination is None:
-            QMessageBox.warning(
-                self, "Unknown backup",
-                "That backup does not correspond to a file this app currently knows about.",
-            )
-            return
-        if not self._guard_game_closed():
-            return
-        result = writer.restore(backup, destination)
-        QMessageBox.information(self, "Restored", result.message)
 
 
 def run() -> int:
