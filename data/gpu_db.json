@@ -1,6 +1,6 @@
 {
   "schema": "bf6tuner.gpu_db/1",
-  "version": "2026.09.06",
+  "version": "2026.09.06.1",
   "notes": [
     "score = internal BF6 raster index. 100 == RTX 4080 SUPER at 1440p, 'High' equivalent settings.",
     "Estimated FPS model lives in engine.py; scores here are the only tunable input.",
@@ -31,6 +31,11 @@
     {"id": "rtx 5060 ti", "name": "GeForce RTX 5060 Ti", "vendor": "nvidia", "arch": "blackwell", "vram": 8, "score": 56, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "dlss4", "reflex": true, "rt": 2},
     {"id": "rtx 5060", "name": "GeForce RTX 5060", "vendor": "nvidia", "arch": "blackwell", "vram": 8, "score": 49, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "dlss4", "reflex": true, "rt": 2},
     {"id": "rtx 5050", "name": "GeForce RTX 5050", "vendor": "nvidia", "arch": "blackwell", "vram": 8, "score": 38, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "dlss4", "reflex": true, "rt": 2},
+    {"id": "rtx 5080 laptop", "name": "GeForce RTX 5080 Laptop", "vendor": "nvidia", "arch": "blackwell", "vram": 16, "score": 78, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "dlss4", "reflex": true, "rt": 3},
+    {"id": "rtx 5070 ti laptop", "name": "GeForce RTX 5070 Ti Laptop", "vendor": "nvidia", "arch": "blackwell", "vram": 12, "score": 70, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "dlss4", "reflex": true, "rt": 3},
+    {"id": "rtx 5070 laptop", "name": "GeForce RTX 5070 Laptop", "vendor": "nvidia", "arch": "blackwell", "vram": 8, "score": 60, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "dlss4", "reflex": true, "rt": 3},
+    {"id": "rtx 5060 laptop", "name": "GeForce RTX 5060 Laptop", "vendor": "nvidia", "arch": "blackwell", "vram": 8, "score": 42, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "dlss4", "reflex": true, "rt": 2},
+    {"id": "rtx 5050 laptop", "name": "GeForce RTX 5050 Laptop", "vendor": "nvidia", "arch": "blackwell", "vram": 8, "score": 32, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "dlss4", "reflex": true, "rt": 2},
 
     {"id": "rtx 4090", "name": "GeForce RTX 4090", "vendor": "nvidia", "arch": "ada", "vram": 24, "score": 118, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "dlss3", "reflex": true, "rt": 3},
     {"id": "rtx 4080 super", "name": "GeForce RTX 4080 SUPER", "vendor": "nvidia", "arch": "ada", "vram": 16, "score": 100, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "dlss3", "reflex": true, "rt": 3},
@@ -42,6 +47,11 @@
     {"id": "rtx 4060 ti 16gb", "name": "GeForce RTX 4060 Ti 16GB", "vendor": "nvidia", "arch": "ada", "vram": 16, "score": 55, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "dlss3", "reflex": true, "rt": 2},
     {"id": "rtx 4060 ti", "name": "GeForce RTX 4060 Ti", "vendor": "nvidia", "arch": "ada", "vram": 8, "score": 54, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "dlss3", "reflex": true, "rt": 2},
     {"id": "rtx 4060", "name": "GeForce RTX 4060", "vendor": "nvidia", "arch": "ada", "vram": 8, "score": 45, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "dlss3", "reflex": true, "rt": 2},
+    {"id": "rtx 4090 laptop", "name": "GeForce RTX 4090 Laptop", "vendor": "nvidia", "arch": "ada", "vram": 16, "score": 84, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "dlss3", "reflex": true, "rt": 3},
+    {"id": "rtx 4080 laptop", "name": "GeForce RTX 4080 Laptop", "vendor": "nvidia", "arch": "ada", "vram": 12, "score": 68, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "dlss3", "reflex": true, "rt": 3},
+    {"id": "rtx 4070 super laptop", "name": "GeForce RTX 4070 SUPER Laptop", "vendor": "nvidia", "arch": "ada", "vram": 8, "score": 58, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "dlss3", "reflex": true, "rt": 3},
+    {"id": "rtx 4070 laptop", "name": "GeForce RTX 4070 Laptop", "vendor": "nvidia", "arch": "ada", "vram": 8, "score": 50, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "dlss3", "reflex": true, "rt": 2},
+    {"id": "rtx 4060 laptop", "name": "GeForce RTX 4060 Laptop", "vendor": "nvidia", "arch": "ada", "vram": 8, "score": 38, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "dlss3", "reflex": true, "rt": 2},
     {"id": "rtx 4050 laptop", "name": "GeForce RTX 4050 Laptop", "vendor": "nvidia", "arch": "ada", "vram": 6, "score": 34, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "dlss3", "reflex": true, "rt": 2},
 
     {"id": "rtx 3090 ti", "name": "GeForce RTX 3090 Ti", "vendor": "nvidia", "arch": "ampere", "vram": 24, "score": 81, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "fsr3", "reflex": true, "rt": 2},
@@ -57,7 +67,9 @@
 
     {"id": "rtx 2080 ti", "name": "GeForce RTX 2080 Ti", "vendor": "nvidia", "arch": "turing", "vram": 11, "score": 57, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "fsr3", "reflex": true, "rt": 1},
     {"id": "rtx 2080 super", "name": "GeForce RTX 2080 SUPER", "vendor": "nvidia", "arch": "turing", "vram": 8, "score": 49, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "fsr3", "reflex": true, "rt": 1},
+    {"id": "rtx 2080", "name": "GeForce RTX 2080", "vendor": "nvidia", "arch": "turing", "vram": 8, "score": 47, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "fsr3", "reflex": true, "rt": 1},
     {"id": "rtx 2070 super", "name": "GeForce RTX 2070 SUPER", "vendor": "nvidia", "arch": "turing", "vram": 8, "score": 45, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "fsr3", "reflex": true, "rt": 1},
+    {"id": "rtx 2070", "name": "GeForce RTX 2070", "vendor": "nvidia", "arch": "turing", "vram": 8, "score": 42, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "fsr3", "reflex": true, "rt": 1},
     {"id": "rtx 2060 super", "name": "GeForce RTX 2060 SUPER", "vendor": "nvidia", "arch": "turing", "vram": 8, "score": 39, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "fsr3", "reflex": true, "rt": 1},
     {"id": "rtx 2060", "name": "GeForce RTX 2060", "vendor": "nvidia", "arch": "turing", "vram": 6, "score": 34, "dlss": 4, "fsr": 3, "xess": 1, "frame_gen": "fsr3", "reflex": true, "rt": 1},
     {"id": "gtx 1660 super", "name": "GeForce GTX 1660 SUPER", "vendor": "nvidia", "arch": "turing", "vram": 6, "score": 31, "dlss": 0, "fsr": 3, "xess": 1, "frame_gen": "fsr3", "reflex": true, "rt": 0},
@@ -70,11 +82,14 @@
     {"id": "gtx 1070 ti", "name": "GeForce GTX 1070 Ti", "vendor": "nvidia", "arch": "pascal", "vram": 8, "score": 33, "dlss": 0, "fsr": 3, "xess": 1, "frame_gen": "fsr3", "reflex": false, "rt": 0},
     {"id": "gtx 1070", "name": "GeForce GTX 1070", "vendor": "nvidia", "arch": "pascal", "vram": 8, "score": 29, "dlss": 0, "fsr": 3, "xess": 1, "frame_gen": "fsr3", "reflex": false, "rt": 0},
     {"id": "gtx 1060", "name": "GeForce GTX 1060", "vendor": "nvidia", "arch": "pascal", "vram": 6, "score": 21, "dlss": 0, "fsr": 3, "xess": 1, "frame_gen": "fsr3", "reflex": false, "rt": 0},
+    {"id": "gtx 1050 ti", "name": "GeForce GTX 1050 Ti", "vendor": "nvidia", "arch": "pascal", "vram": 4, "score": 12, "dlss": 0, "fsr": 3, "xess": 1, "frame_gen": "none", "reflex": false, "rt": 0},
+    {"id": "gtx 1050", "name": "GeForce GTX 1050", "vendor": "nvidia", "arch": "pascal", "vram": 2, "score": 9, "dlss": 0, "fsr": 3, "xess": 1, "frame_gen": "none", "reflex": false, "rt": 0},
 
     {"id": "rx 9070 xt", "name": "Radeon RX 9070 XT", "vendor": "amd", "arch": "rdna4", "vram": 16, "score": 87, "dlss": 0, "fsr": 4, "xess": 1, "frame_gen": "fsr3", "reflex": false, "rt": 3},
     {"id": "rx 9070", "name": "Radeon RX 9070", "vendor": "amd", "arch": "rdna4", "vram": 16, "score": 77, "dlss": 0, "fsr": 4, "xess": 1, "frame_gen": "fsr3", "reflex": false, "rt": 3},
     {"id": "rx 9060 xt 16gb", "name": "Radeon RX 9060 XT 16GB", "vendor": "amd", "arch": "rdna4", "vram": 16, "score": 56, "dlss": 0, "fsr": 4, "xess": 1, "frame_gen": "fsr3", "reflex": false, "rt": 2},
     {"id": "rx 9060 xt", "name": "Radeon RX 9060 XT", "vendor": "amd", "arch": "rdna4", "vram": 8, "score": 55, "dlss": 0, "fsr": 4, "xess": 1, "frame_gen": "fsr3", "reflex": false, "rt": 2},
+    {"id": "rx 9060", "name": "Radeon RX 9060", "vendor": "amd", "arch": "rdna4", "vram": 8, "score": 47, "dlss": 0, "fsr": 4, "xess": 1, "frame_gen": "fsr3", "reflex": false, "rt": 2},
     {"id": "rx 7900 xtx", "name": "Radeon RX 7900 XTX", "vendor": "amd", "arch": "rdna3", "vram": 24, "score": 95, "dlss": 0, "fsr": 3, "xess": 1, "frame_gen": "fsr3", "reflex": false, "rt": 2},
     {"id": "rx 7900 xt", "name": "Radeon RX 7900 XT", "vendor": "amd", "arch": "rdna3", "vram": 20, "score": 84, "dlss": 0, "fsr": 3, "xess": 1, "frame_gen": "fsr3", "reflex": false, "rt": 2},
     {"id": "rx 7900 gre", "name": "Radeon RX 7900 GRE", "vendor": "amd", "arch": "rdna3", "vram": 16, "score": 76, "dlss": 0, "fsr": 3, "xess": 1, "frame_gen": "fsr3", "reflex": false, "rt": 2},
@@ -88,6 +103,7 @@
     {"id": "rx 6800", "name": "Radeon RX 6800", "vendor": "amd", "arch": "rdna2", "vram": 16, "score": 62, "dlss": 0, "fsr": 3, "xess": 1, "frame_gen": "fsr3", "reflex": false, "rt": 1},
     {"id": "rx 6750 xt", "name": "Radeon RX 6750 XT", "vendor": "amd", "arch": "rdna2", "vram": 12, "score": 55, "dlss": 0, "fsr": 3, "xess": 1, "frame_gen": "fsr3", "reflex": false, "rt": 1},
     {"id": "rx 6700 xt", "name": "Radeon RX 6700 XT", "vendor": "amd", "arch": "rdna2", "vram": 12, "score": 52, "dlss": 0, "fsr": 3, "xess": 1, "frame_gen": "fsr3", "reflex": false, "rt": 1},
+    {"id": "rx 6700", "name": "Radeon RX 6700", "vendor": "amd", "arch": "rdna2", "vram": 10, "score": 48, "dlss": 0, "fsr": 3, "xess": 1, "frame_gen": "fsr3", "reflex": false, "rt": 1},
     {"id": "rx 6650 xt", "name": "Radeon RX 6650 XT", "vendor": "amd", "arch": "rdna2", "vram": 8, "score": 42, "dlss": 0, "fsr": 3, "xess": 1, "frame_gen": "fsr3", "reflex": false, "rt": 1},
     {"id": "rx 6600 xt", "name": "Radeon RX 6600 XT", "vendor": "amd", "arch": "rdna2", "vram": 8, "score": 40, "dlss": 0, "fsr": 3, "xess": 1, "frame_gen": "fsr3", "reflex": false, "rt": 1},
     {"id": "rx 6600", "name": "Radeon RX 6600", "vendor": "amd", "arch": "rdna2", "vram": 8, "score": 36, "dlss": 0, "fsr": 3, "xess": 1, "frame_gen": "fsr3", "reflex": false, "rt": 1},
@@ -97,6 +113,7 @@
     {"id": "rx 5500 xt", "name": "Radeon RX 5500 XT", "vendor": "amd", "arch": "rdna1", "vram": 8, "score": 24, "dlss": 0, "fsr": 3, "xess": 1, "frame_gen": "fsr3", "reflex": false, "rt": 0},
     {"id": "rx 580", "name": "Radeon RX 580", "vendor": "amd", "arch": "polaris", "vram": 8, "score": 21, "dlss": 0, "fsr": 3, "xess": 1, "frame_gen": "fsr3", "reflex": false, "rt": 0},
 
+    {"id": "arc b770", "name": "Intel Arc B770", "vendor": "intel", "arch": "battlemage", "vram": 16, "score": 62, "dlss": 0, "fsr": 3, "xess": 2, "frame_gen": "fsr3", "reflex": false, "rt": 2},
     {"id": "arc b580", "name": "Intel Arc B580", "vendor": "intel", "arch": "battlemage", "vram": 12, "score": 48, "dlss": 0, "fsr": 3, "xess": 2, "frame_gen": "fsr3", "reflex": false, "rt": 2},
     {"id": "arc b570", "name": "Intel Arc B570", "vendor": "intel", "arch": "battlemage", "vram": 10, "score": 42, "dlss": 0, "fsr": 3, "xess": 2, "frame_gen": "fsr3", "reflex": false, "rt": 2},
     {"id": "arc a770", "name": "Intel Arc A770", "vendor": "intel", "arch": "alchemist", "vram": 16, "score": 42, "dlss": 0, "fsr": 3, "xess": 2, "frame_gen": "fsr3", "reflex": false, "rt": 1},
