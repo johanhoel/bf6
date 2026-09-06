@@ -35,21 +35,31 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    [],
-    name="BF6Tuner",
+COMMON = dict(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
     runtime_tmpdir=None,
-    console=False,
     disable_windowed_traceback=False,
     icon=str(BUILD / "bf6tuner.ico"),
     version=str(BUILD / "version_info.txt"),
+)
+
+# Two binaries from one analysis, because Windows makes an executable either a
+# GUI one or a console one at link time and there is no runtime switch.
+#
+#   BF6Tuner.exe      GUI subsystem. Double-click, no console window flashes up.
+#                     A GUI-subsystem process has no stdout, so it cannot be
+#                     used from a terminal - the shell does not even wait for it.
+#   BF6Tuner-cli.exe  Console subsystem. Real stdout, real exit codes, output
+#                     redirection works, and a shell waits for it to finish.
+exe_gui = EXE(
+    pyz, a.scripts, a.binaries, a.zipfiles, a.datas, [],
+    name="BF6Tuner", console=False, **COMMON,
+)
+
+exe_cli = EXE(
+    pyz, a.scripts, a.binaries, a.zipfiles, a.datas, [],
+    name="BF6Tuner-cli", console=True, **COMMON,
 )

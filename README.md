@@ -128,22 +128,37 @@ That is the difference between an undo and a partial one. Snapshots live in
 From the command line:
 
 ```
-BF6Tuner.exe --backup                    # snapshot both files, change nothing
-BF6Tuner.exe --list-restore-points       # newest first
-BF6Tuner.exe --restore latest            # or --restore 20260906-113000
+BF6Tuner-cli.exe --backup                # snapshot both files, change nothing
+BF6Tuner-cli.exe --list-restore-points   # newest first
+BF6Tuner-cli.exe --restore latest        # or --restore 20260906-113000
 ```
 
 Applying from the CLI prints the exact `--restore` command that undoes it.
 
 ## Getting the executable
 
-**Download it.** Every push builds `BF6Tuner.exe` on a real Windows runner, runs
-the test suite, executes the built binary, and uploads it. Grab it from the
-GitHub Actions run for this branch → artifact `BF6Tuner-windows-x64`. Drop it
-wherever you keep tools — e.g. `C:\Users\<you>\claude\bf6-configurator\`.
+**Download it.** Every push builds on a real Windows runner, runs the test
+suite, executes the built binary and uploads the result. Grab it from the GitHub
+Actions run for this branch → artifact `BF6Tuner-windows-x64`. Drop it wherever
+you keep tools — e.g. `C:\Users\<you>\claude\bf6-configurator\`.
 
-It is portable: one file, no installer, no registry writes. Configuration
-backups go to `%APPDATA%\BF6Tuner\backups\`.
+The artifact contains **two executables**:
+
+| File | Use it for |
+|---|---|
+| `BF6Tuner.exe` | The app. Double-click it. No console window appears. |
+| `BF6Tuner-cli.exe` | The same application, for use from a terminal or a script. |
+
+They are the same code and the same encrypted database. Windows decides whether
+an executable is a GUI program or a console program when it is linked, and there
+is no runtime switch: a GUI binary has no stdout at all, and a shell does not
+even wait for it to finish. So a single executable cannot both double-click
+cleanly *and* work in PowerShell. Hence one of each.
+
+If you only ever double-click, you only need `BF6Tuner.exe`.
+
+Both are portable: no installer, no registry writes. Restore points go to
+`%APPDATA%\BF6Tuner\backups\`.
 
 **Or build it yourself** on any Windows machine with Python 3.11+:
 
@@ -154,8 +169,8 @@ packaging\build.bat
 ```
 
 That one script creates a virtual environment, installs dependencies, runs the
-tests, builds `dist\BF6Tuner.exe`, and opens the folder. Add `--obfuscate` to
-run PyArmor over the source as well.
+tests, builds both executables into `dist\`, and opens the folder. Add
+`--obfuscate` to run PyArmor over the source as well.
 
 ## About "encrypted"
 
@@ -185,13 +200,15 @@ resolution, refresh rate or options; nothing is written until you press a button
 
 There is also a full command-line mode:
 
+Use `BF6Tuner-cli.exe` for this — the GUI build has no console to print to:
+
 ```
-BF6Tuner.exe --preset competitive --resolution 2560x1440 --refresh 165
-BF6Tuner.exe --preset esports --apply --apply-ingame
-BF6Tuner.exe --preset balanced --report report.txt --json report.json
-BF6Tuner.exe --print-cfg > User.cfg
-BF6Tuner.exe --backup
-BF6Tuner.exe --restore latest
+BF6Tuner-cli.exe --preset competitive --resolution 2560x1440 --refresh 165
+BF6Tuner-cli.exe --preset esports --apply --apply-ingame
+BF6Tuner-cli.exe --preset balanced --report report.txt --json report.json
+BF6Tuner-cli.exe --print-cfg > User.cfg
+BF6Tuner-cli.exe --backup
+BF6Tuner-cli.exe --restore latest
 ```
 
 The report and the JSON export both include the full current-vs-recommended

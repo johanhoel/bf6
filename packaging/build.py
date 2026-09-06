@@ -6,6 +6,12 @@ Run it from anywhere:
     python packaging/build.py --obfuscate     # additionally run PyArmor over the source
     python packaging/build.py --bundle-only   # just produce the encrypted database
 
+Produces two binaries from one analysis. Windows fixes whether an executable is
+a GUI or a console program at link time, so BF6Tuner.exe is the double-clickable
+GUI (no console window) and BF6Tuner-cli.exe is the same application with a
+console attached, which is what makes stdout, exit codes and output redirection
+work from a terminal.
+
 What "encrypted" means here, stated plainly: the settings database is AES-256-GCM
 encrypted and the executable verifies its integrity tag before using it, so the
 data cannot be read or edited with a text editor and a tampered bundle refuses to
@@ -122,7 +128,7 @@ def run_pyarmor() -> Path:
     return output
 
 
-def run_pyinstaller(source_root: Path, clean: bool) -> Path:
+def run_pyinstaller(source_root: Path, clean: bool) -> list[Path]:
     command = [
         sys.executable, "-m", "PyInstaller",
         str(ROOT / "packaging" / "bf6tuner.spec"),
@@ -132,14 +138,25 @@ def run_pyinstaller(source_root: Path, clean: bool) -> Path:
     ]
     if clean:
         command.append("--clean")
-    environment = dict(os.environ, PYTHONPATH=str(source_root))
+    # Prepend rather than replace: clobbering PYTHONPATH breaks the build on any
+    # machine that already has one set.
+    existing = os.environ.get("PYTHONPATH", "")
+    environment = dict(
+        os.environ,
+        PYTHONPATH=os.pathsep.join([str(source_root)] + ([existing] if existing else [])),
+    )
     log("running PyInstaller ...")
     subprocess.run(command, check=True, cwd=str(ROOT), env=environment)
 
-    exe = DIST / ("BF6Tuner.exe" if os.name == "nt" else "BF6Tuner")
-    if not exe.is_file():
-        raise SystemExit(f"PyInstaller finished but {exe} is missing.")
-    return exe
+    suffix = ".exe" if os.name == "nt" else ""
+    built = [DIST / f"BF6Tuner{suffix}", DIST / f"BF6Tuner-cli{suffix}"]
+    missing = [path for path in built if not path.is_file()]
+    if missing:
+        raise SystemExit(
+            "PyInstaller finished but these are missing: "
+            + ", ".join(str(path) for path in missing)
+        )
+    return built
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -165,10 +182,11 @@ def main(argv: list[str] | None = None) -> int:
     write_version_info()
 
     source_root = run_pyarmor() if args.obfuscate else SRC
-    exe = run_pyinstaller(source_root, clean=not args.no_clean)
+    built = run_pyinstaller(source_root, clean=not args.no_clean)
 
-    size_mb = exe.stat().st_size / (1024 * 1024)
-    log(f"done: {exe} ({size_mb:.1f} MB)")
+    for path in built:
+        log(f"done: {path} ({path.stat().st_size / (1024 * 1024):.1f} MB)")
+    log("BF6Tuner is the GUI; BF6Tuner-cli is the same app with a working console.")
     log("The database is encrypted inside the executable; no editable JSON ships with it.")
     return 0
 
