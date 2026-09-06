@@ -476,8 +476,13 @@ class MainWindow(QMainWindow):
                         f" color: {_OVERRIDE_EDGE};"
                         f" font-weight: 600;"
                     )
+                    editor.setToolTip(
+                        f"You set this to {choice.display}.\n"
+                        f"Engine recommended: {choice.recommended_display}"
+                    )
                 else:
                     editor.setStyleSheet("")
+                    editor.setToolTip("")
             else:
                 cell = table.item(row, 1)
                 if cell is not None:
@@ -487,15 +492,25 @@ class MainWindow(QMainWindow):
             reset_button = table.cellWidget(row, 2)
             if isinstance(reset_button, QPushButton):
                 reset_button.setEnabled(choice.overridden)
-                reset_button.setToolTip(
-                    f"Back to the recommended {choice.recommended_display}"
-                    if choice.overridden else "Matches the recommendation"
-                )
+                if choice.overridden and choice.recommended_display:
+                    reset_button.setText(f"↩ {choice.recommended_display}")
+                    reset_button.setToolTip(
+                        f"Click to restore the recommended value: {choice.recommended_display}"
+                    )
+                else:
+                    reset_button.setText("Reset")
+                    reset_button.setToolTip("Already matches the recommendation")
 
             why = table.item(row, 3)
             if why is not None:
-                why.setText(choice.reason)
-                why.setToolTip(choice.reason)
+                if choice.overridden and choice.recommended_display:
+                    why_text = f"was: {choice.recommended_display}    {choice.reason}"
+                    why.setForeground(_OVERRIDE_FG)
+                else:
+                    why_text = choice.reason
+                    why.setForeground(QColor(theme.TEXT_DIM))
+                why.setText(why_text)
+                why.setToolTip(why_text)
 
         count = len(rec.overrides)
         self.reset_overrides_button.setEnabled(bool(count))
