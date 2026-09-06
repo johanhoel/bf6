@@ -306,7 +306,7 @@ class MainWindow(QMainWindow):
         self.settings_table = self._make_table(
             ["Setting", "Value", "", "Why"], [250, 200, 155, -1]
         )
-        self.settings_table.verticalHeader().setDefaultSectionSize(38)
+        self.settings_table.verticalHeader().setDefaultSectionSize(48)
         self.tabs.addTab(self._build_settings_tab(), "In-game settings")
 
         self.cfg_view = QPlainTextEdit()
@@ -516,6 +516,8 @@ class MainWindow(QMainWindow):
         self.reset_overrides_button.setEnabled(bool(count))
         self.tabs.setTabText(1, f"In-game settings ({count} changed)" if count
                              else "In-game settings")
+        # Let each row grow to fit its content (Why column can wrap).
+        self.settings_table.resizeRowsToContents()
 
     # -- override handling -------------------------------------------------
 
