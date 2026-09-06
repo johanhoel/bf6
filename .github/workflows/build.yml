@@ -1,0 +1,113 @@
+name: Build
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      obfuscate:
+        description: "Run PyArmor over the source before packaging"
+        type: boolean
+        default: false
+
+jobs:
+  test:
+    name: Tests (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip pytest cryptography
+      - name: Run tests
+        run: python -m pytest tests -q
+      - name: Verify the encrypted bundle builds
+        run: python packaging/build.py --bundle-only
+
+  build:
+    name: Build BF6Tuner.exe
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Install PyArmor
+        if: inputs.obfuscate
+        run: python -m pip install pyarmor
+
+      - name: Run tests
+        run: python -m pytest tests -q
+
+      - name: Build
+        run: python packaging/build.py ${{ inputs.obfuscate && '--obfuscate' || '' }}
+
+      - name: Smoke test the executables
+        shell: pwsh
+        run: |
+          $gui = "dist\BF6Tuner.exe"
+          $cli = "dist\BF6Tuner-cli.exe"
+          foreach ($path in @($gui, $cli)) {
+            if (-not (Test-Path $path)) { throw "$path was not produced" }
+          }
+
+          # Windows fixes the subsystem at link time, so assert we shipped one of
+          # each: a GUI binary that will not flash a console on double-click, and
+          # a console binary that a terminal can actually use.
+          function Get-Subsystem($path) {
+            $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path $path))
+            $peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
+            return [BitConverter]::ToUInt16($bytes, $peOffset + 0x5C)  # 2 = GUI, 3 = console
+          }
+          $guiSubsystem = Get-Subsystem $gui
+          $cliSubsystem = Get-Subsystem $cli
+          if ($guiSubsystem -ne 2) { throw "BF6Tuner.exe should be GUI subsystem, got $guiSubsystem" }
+          if ($cliSubsystem -ne 3) { throw "BF6Tuner-cli.exe should be console subsystem, got $cliSubsystem" }
+          Write-Host "Subsystems correct: BF6Tuner.exe = GUI, BF6Tuner-cli.exe = console"
+
+          # The GUI binary has no stdout and a shell does not wait for it, so the
+          # console build is the one a smoke test can meaningfully drive. Both are
+          # the same code and the same encrypted database.
+          & $cli --preset competitive --resolution 1920x1080 --refresh 240 `
+                 --report "$env:RUNNER_TEMP\report.txt" --json "$env:RUNNER_TEMP\report.json"
+          if ($LASTEXITCODE -ne 0) { throw "BF6Tuner-cli.exe exited with $LASTEXITCODE" }
+          foreach ($artefact in @("report.txt", "report.json")) {
+            if (-not (Test-Path "$env:RUNNER_TEMP\$artefact")) { throw "$artefact was not written" }
+          }
+
+          # Output redirection has to work for the documented '--print-cfg > User.cfg'.
+          & $cli --print-cfg > "$env:RUNNER_TEMP\User.cfg"
+          if ($LASTEXITCODE -ne 0) { throw "--print-cfg exited with $LASTEXITCODE" }
+          $cfg = Get-Content "$env:RUNNER_TEMP\User.cfg" -Raw
+          if ($cfg -notmatch "GameTime.MaxVariableFps") { throw "User.cfg output looks wrong" }
+
+          # Backup and restore must work from the frozen binary too.
+          & $cli --list-restore-points
+          if ($LASTEXITCODE -ne 0) { throw "--list-restore-points exited with $LASTEXITCODE" }
+
+          $sizes = (Get-Item $gui, $cli | ForEach-Object {
+            "$($_.Name) $([math]::Round($_.Length / 1MB, 1)) MB"
+          }) -join ", "
+          Write-Host "Built and ran on a real Windows machine: $sizes"
+          Get-Content "$env:RUNNER_TEMP\report.txt" -TotalCount 30
+
+      - name: Upload executables
+        uses: actions/upload-artifact@v4
+        with:
+          name: BF6Tuner-windows-x64
+          path: |
+            dist/BF6Tuner.exe
+            dist/BF6Tuner-cli.exe
+          if-no-files-found: error
+          retention-days: 90

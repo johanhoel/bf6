@@ -140,7 +140,7 @@ Applying from the CLI prints the exact `--restore` command that undoes it.
 **Download it.** Every push builds on a real Windows runner, runs the test
 suite, executes the built binary and uploads the result. Grab it from the GitHub
 Actions run for this branch → artifact `BF6Tuner-windows-x64`. Drop it wherever
-you keep tools — e.g. `C:\Users\<you>\claude\bf6-configurator\`.
+you keep tools — e.g. `C:\Users\<you>\claude\bf6\`.
 
 The artifact contains **two executables**:
 
@@ -163,8 +163,8 @@ Both are portable: no installer, no registry writes. Restore points go to
 **Or build it yourself** on any Windows machine with Python 3.11+:
 
 ```bat
-git clone <this repo>
-cd bf6-configurator
+git clone https://github.com/johanhoel/bf6.git
+cd bf6
 packaging\build.bat
 ```
 
@@ -274,7 +274,7 @@ engine and UI can be exercised anywhere. `python packaging/build.py --bundle-onl
 builds just the encrypted database.
 
 ```
-bf6-configurator/
+bf6/
 ├── data/                 five JSON datasets (the database)
 ├── src/bf6tuner/
 │   ├── hardware.py       detection: CIM, registry, core topology, display modes
