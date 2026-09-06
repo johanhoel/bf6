@@ -12,7 +12,7 @@ import traceback
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
     QAbstractSpinBox, QApplication, QButtonGroup, QCheckBox, QComboBox, QFileDialog, QFrame,
     QGridLayout, QHBoxLayout, QHeaderView, QLabel, QMainWindow, QMessageBox,
@@ -58,6 +58,36 @@ def dim(text: str) -> QLabel:
     label.setObjectName("Dim")
     label.setWordWrap(True)
     return label
+
+
+class _NoScrollComboBox(QComboBox):
+    """Drop-in QComboBox that ignores wheel events unless it has keyboard focus.
+
+    Without this, scrolling the settings table silently changes option values —
+    the user never sees the widget activate and has no idea a setting moved.
+    The widget must be explicitly clicked (keyboard focus) before the wheel works.
+    """
+    def wheelEvent(self, event) -> None:  # type: ignore[override]
+        if self.hasFocus():
+            super().wheelEvent(event)
+        else:
+            event.ignore()
+
+
+class _NoScrollSpinBox(QSpinBox):
+    """Same guard for spin-box editors."""
+    def wheelEvent(self, event) -> None:  # type: ignore[override]
+        if self.hasFocus():
+            super().wheelEvent(event)
+        else:
+            event.ignore()
+
+
+# Amber palette for "you changed this from the recommendation".
+_OVERRIDE_FG   = QColor(theme.WARN)          # #d29922 amber
+_OVERRIDE_BG   = QColor("#2b2208")            # very dark amber tint
+_OVERRIDE_EDGE = theme.WARN                   # reused in stylesheet strings
+_NORMAL_FG     = QColor(theme.TEXT)
 
 
 class DetectWorker(QThread):
@@ -342,7 +372,7 @@ class MainWindow(QMainWindow):
 
         kind = setting.get("type")
         if kind in ("enum", "bool", "upscaler") or setting.get("options"):
-            box = QComboBox()
+            box = _NoScrollComboBox()
             options = setting.get("options")
             if not options and kind == "bool":
                 options = [{"value": 0, "label": "Off"}, {"value": 1, "label": "On"}]
@@ -354,7 +384,7 @@ class MainWindow(QMainWindow):
             return box
 
         if kind == "slider":
-            spin = QSpinBox()
+            spin = _NoScrollSpinBox()
             spin.setRange(int(setting.get("min", 0)), int(setting.get("max", 1000)))
             unit = setting.get("unit", "")
             if unit and len(unit) <= 6:
@@ -411,14 +441,17 @@ class MainWindow(QMainWindow):
 
             name_item = table.item(row, 0)
             if name_item is not None:
-                name_item.setText(("• " if choice.overridden else "") + choice.label)
+                name_item.setText(("◆ " if choice.overridden else "") + choice.label)
                 if choice.overridden:
                     font = QFont()
                     font.setBold(True)
                     name_item.setFont(font)
-                    name_item.setForeground(Qt.white)
+                    name_item.setForeground(_OVERRIDE_FG)
+                    name_item.setBackground(_OVERRIDE_BG)
                 else:
                     name_item.setFont(QFont())
+                    name_item.setForeground(_NORMAL_FG)
+                    name_item.setBackground(QColor())  # transparent / default
 
             editor = self._setting_editors.get(choice.setting_id)
             if editor is not None:
@@ -433,6 +466,18 @@ class MainWindow(QMainWindow):
                     except (TypeError, ValueError):
                         pass
                 editor.blockSignals(False)
+                # Colour the editor itself so the change is obvious even when
+                # the row is not selected.
+                if choice.overridden:
+                    editor.setStyleSheet(
+                        f"background-color: {_OVERRIDE_BG.name()};"
+                        f" border: 2px solid {_OVERRIDE_EDGE};"
+                        f" border-radius: 6px;"
+                        f" color: {_OVERRIDE_EDGE};"
+                        f" font-weight: 600;"
+                    )
+                else:
+                    editor.setStyleSheet("")
             else:
                 cell = table.item(row, 1)
                 if cell is not None:
