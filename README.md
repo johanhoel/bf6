@@ -49,6 +49,11 @@ Balanced, Quality), with textures capped to your VRAM, an upscaler mode chosen
 from your GPU vendor and the gap to your target, and a frame cap computed from
 your refresh rate and what the machine can actually hold.
 
+**Lets you disagree** — every recommended value is editable. Change one and the
+predicted frame rate, the frame cap and the comparison all follow, so you can see
+what your choice costs rather than guessing. Overrides persist across restarts and
+preset changes, are marked in the table, and reset individually or all at once.
+
 **Compares** — reads your *current* settings out of `PROFSAVE_profile` and your
 existing `User.cfg`, then shows every single change side by side with what it
 costs, what it buys and what the argument against it is. Nothing is applied
@@ -160,6 +165,12 @@ If you only ever double-click, you only need `BF6Tuner.exe`.
 Both are portable: no installer, no registry writes. Restore points go to
 `%APPDATA%\BF6Tuner\backups\`.
 
+**Keep it up to date.** `UPDATE.bat` in the repo root is the one-shot: it pulls the
+latest changes, pushes them to this repository (which starts the cloud build), runs
+the tests, builds both executables and drops them in the repo folder itself, so
+`BF6Tuner.exe` sits right next to the script. First run installs the Python
+dependencies and takes a few minutes; after that it is about a minute.
+
 **Or build it yourself** on any Windows machine with Python 3.11+:
 
 ```bat
@@ -265,7 +276,7 @@ only thing that needs changing.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests -q          # 103 tests
+python -m pytest tests -q          # 117 tests
 PYTHONPATH=src python -m bf6tuner --preset competitive   # CLI, runs on Linux too
 ```
 
@@ -281,6 +292,7 @@ bf6/
 │   ├── paths.py          finding the game and its two config files
 │   ├── prefs.py          remembered manual path overrides
 │   ├── engine.py         matching, frame rate model, setting selection, cfg policy
+│   ├── costs.py          per-option cost curves shared by engine and compare
 │   ├── compare.py        current vs recommended, impact and trade-offs
 │   ├── writer.py         rendering, restore points, PROFSAVE patching, reports
 │   ├── crypto.py         AES-256-GCM bundle format

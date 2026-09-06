@@ -22,31 +22,12 @@ from pathlib import Path
 from typing import Any
 
 from .database import Database
-from .engine import UPSCALE_COST, Recommendation, SettingChoice
+from .costs import cost_for as _cost_for, frame_time as _frame_time, zero as _zero
+from .engine import Recommendation, SettingChoice
 from .writer import parse_profsave, render_user_cfg
 
 # Quality order for settings whose values are not numeric.
 UPSCALER_ORDER = ["ultra_performance", "performance", "balanced", "quality", "dlaa", "off"]
-
-# Upscaling changes the pixel count, not the whole frame. Scale its modelled
-# effect down so a Quality-mode switch does not claim the entire frame time.
-_UPSCALE_FRAME_SHARE = 0.90
-
-# Frame time is modelled in units where 100 = the reference configuration (every
-# setting at its baseline option). A config's frame time is 100 plus the sum of
-# its options' costs, which composes correctly for any number of simultaneous
-# changes - unlike summing the pairwise deltas, which double-counts and saturates
-# once several expensive settings move at once.
-_FRAME_TIME_BASE = 100.0
-
-# These settings cannot plausibly account for more than this share of a frame,
-# so the summed cost is floored to keep the arithmetic physical.
-_MIN_TOTAL_COST = -85.0
-_MAX_TOTAL_COST = 250.0
-
-
-def _frame_time(total_cost: float) -> float:
-    return _FRAME_TIME_BASE + min(_MAX_TOTAL_COST, max(_MIN_TOTAL_COST, total_cost))
 
 
 @dataclass
@@ -150,65 +131,6 @@ class Comparison:
 # --------------------------------------------------------------------------
 # Cost curve evaluation
 # --------------------------------------------------------------------------
-
-def _zero() -> dict[str, float]:
-    return {"gpu": 0.0, "cpu": 0.0, "vram": 0.0}
-
-
-def option_cost(setting: dict[str, Any], value: Any) -> dict[str, float]:
-    """Frame-time and VRAM cost of one option, relative to that setting's baseline."""
-    cost = setting.get("cost")
-    if not cost or value is None:
-        return _zero()
-
-    if cost.get("interpolate"):
-        try:
-            point = float(value)
-        except (TypeError, ValueError):
-            return _zero()
-        anchors = sorted(
-            (float(k), v) for k, v in cost.items() if k != "interpolate"
-        )
-        if not anchors:
-            return _zero()
-        if point <= anchors[0][0]:
-            entry = anchors[0][1]
-        elif point >= anchors[-1][0]:
-            entry = anchors[-1][1]
-        else:
-            entry = None
-            for (low, low_v), (high, high_v) in zip(anchors, anchors[1:]):
-                if low <= point <= high:
-                    span = high - low
-                    ratio = 0.0 if span == 0 else (point - low) / span
-                    entry = {
-                        axis: low_v.get(axis, 0.0)
-                        + (high_v.get(axis, 0.0) - low_v.get(axis, 0.0)) * ratio
-                        for axis in ("gpu", "cpu", "vram")
-                    }
-                    break
-            if entry is None:
-                return _zero()
-    else:
-        entry = cost.get(str(value))
-        if entry is None:
-            return _zero()
-
-    return {axis: float(entry.get(axis, 0.0)) for axis in ("gpu", "cpu", "vram")}
-
-
-def _upscaler_cost(value: Any) -> dict[str, float]:
-    multiplier = UPSCALE_COST.get(str(value))
-    if multiplier is None:
-        return _zero()
-    return {"gpu": (multiplier - 1.0) * 100.0 * _UPSCALE_FRAME_SHARE, "cpu": 0.0, "vram": 0.0}
-
-
-def _cost_for(setting: dict[str, Any], value: Any) -> dict[str, float]:
-    if setting["id"] == "upscaler":
-        return _upscaler_cost(value)
-    return option_cost(setting, value)
-
 
 def _ordinal(setting: dict[str, Any], value: Any) -> float | None:
     """A quality ranking for the value, so 'raise' and 'lower' can be decided."""

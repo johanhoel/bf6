@@ -27,6 +27,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from .costs import UPSCALE_COST, cost_for, frame_time
 from .database import Database
 from .hardware import HardwareProfile
 
@@ -41,15 +42,6 @@ _RES_EXPONENT = 0.92
 _PRESET_GPU_FACTOR = {"esports": 1.62, "competitive": 1.34, "balanced": 1.00, "quality": 0.80}
 _PRESET_CPU_FACTOR = {"esports": 1.10, "competitive": 1.05, "balanced": 1.00, "quality": 0.97}
 
-# Effective pixel cost of each upscaler mode, including reconstruction overhead.
-UPSCALE_COST = {
-    "off": 1.00,
-    "dlaa": 1.05,
-    "quality": 0.58,
-    "balanced": 0.48,
-    "performance": 0.40,
-    "ultra_performance": 0.28,
-}
 UPSCALE_LADDER = ["off", "quality", "balanced", "performance"]
 
 # How much image quality each lever costs, in comparable units. Upscaling at
@@ -94,6 +86,11 @@ class SettingChoice:
     # Some values are stored in the profile in different units to the ones shown
     # (motion blur and brightness are 0.0-1.0 on disk, percentages in the UI).
     profsave_scale: float = 1.0
+    # What the engine chose, kept even when the user overrides it, so the UI can
+    # offer "back to recommended" and the report can show what was departed from.
+    recommended_value: Any = None
+    recommended_display: str = ""
+    overridden: bool = False
 
 
 @dataclass
@@ -132,6 +129,11 @@ class Recommendation:
     warnings: list[Warning_] = field(default_factory=list)
     tweaks: list[dict[str, Any]] = field(default_factory=list)
     headroom_note: str = ""
+    overrides: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def overridden_settings(self) -> list[SettingChoice]:
+        return [choice for choice in self.settings if choice.overridden]
 
 
 # --------------------------------------------------------------------------
@@ -640,9 +642,34 @@ def _evaluate_tweaks(
 # Entry point
 # --------------------------------------------------------------------------
 
+def _coerce_override(setting: dict[str, Any], value: Any) -> Any:
+    """Bring a stored override back into the type the setting uses.
+
+    Overrides are round-tripped through JSON, so an integer choice can come back
+    as the string "3". Upscaler values are genuinely strings and stay as they are.
+    """
+    kind = setting.get("type")
+    if kind in ("enum", "bool"):
+        options = setting.get("options") or []
+        if any(isinstance(option.get("value"), str) for option in options):
+            return value
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            return value
+    if kind == "slider":
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return value
+        return int(number) if abs(number - round(number)) < 1e-9 else number
+    return value
+
+
 def recommend(
     db: Database, profile: HardwareProfile, target: Target,
     install_drive_media: str | None = None,
+    overrides: dict[str, Any] | None = None,
 ) -> Recommendation:
     if target.preset not in PRESETS:
         raise ValueError(f"Unknown preset {target.preset!r}; expected one of {PRESETS}")
@@ -750,6 +777,71 @@ def recommend(
             profsave_scale=float(setting.get("profsave_scale", 1.0)),
         ))
 
+    # Per-setting overrides are applied on top of the engine's choices, and they
+    # move the prediction: picking Ultra shadows should show the frames it costs,
+    # not silently leave the estimate describing settings you are not using.
+    applied: dict[str, Any] = {}
+    gpu_shift = cpu_shift = 0.0
+    if overrides:
+        for choice in settings:
+            if choice.setting_id not in overrides:
+                continue
+            setting = db.setting(choice.setting_id)
+            if setting is None:
+                continue
+            # Only the settings this app never writes are off limits (mouse and
+            # audio). Field of view and brightness are personal but still written,
+            # so the user is entitled to set them here.
+            if setting.get("never_write") or choice.value == "keep":
+                continue
+            wanted = _coerce_override(setting, overrides[choice.setting_id])
+            if wanted == choice.value:
+                continue
+            before = cost_for(setting, choice.value)
+            after = cost_for(setting, wanted)
+            gpu_shift += after["gpu"] - before["gpu"]
+            cpu_shift += after["cpu"] - before["cpu"]
+
+            choice.recommended_value = choice.value
+            choice.recommended_display = choice.display
+            choice.value = wanted
+            choice.display = _label_for(setting, wanted)
+            choice.overridden = True
+            choice.reason = (
+                f"Set by you. The engine recommended {choice.recommended_display}"
+                f" for this preset. {setting.get('note', '')}"
+            )
+            applied[choice.setting_id] = wanted
+
+    pinned_cap = next(
+        (c.value for c in settings if c.setting_id == "frame_limit" and c.overridden), None
+    )
+    if isinstance(pinned_cap, (int, float)):
+        frame_cap = int(pinned_cap)
+
+    if gpu_shift or cpu_shift:
+        gpu_fps = gpu_fps * frame_time(0.0) / frame_time(gpu_shift)
+        cpu_fps = cpu_fps * frame_time(0.0) / frame_time(cpu_shift)
+        predicted = min(gpu_fps, cpu_fps)
+        bottleneck = "CPU" if cpu_fps < gpu_fps * 0.97 else (
+            "GPU" if gpu_fps < cpu_fps * 0.97 else "balanced")
+        # The cap is derived from the prediction, so it has to follow it - unless
+        # the user pinned it themselves, in which case theirs wins everywhere.
+        if pinned_cap is None:
+            frame_cap = _compute_frame_cap(target, predicted)
+            for choice in settings:
+                if choice.setting_id == "frame_limit":
+                    choice.value = frame_cap
+                    choice.display = _label_for(db.setting("frame_limit"), frame_cap)
+
+    if applied:
+        warnings.append(Warning_(
+            "info", f"{len(applied)} setting(s) overridden by you",
+            "The prediction, the User.cfg frame cap and the comparison all reflect your "
+            "values, not the preset's. Changing preset keeps your overrides - use "
+            "'Reset to recommended' to drop them.",
+        ))
+
     cfg_lines, cfg_warnings = _build_cfg(
         db, gpu, cpu, profile, target, frame_cap, cpu_bound=(bottleneck == "CPU")
     )
@@ -799,7 +891,7 @@ def recommend(
         gpu_fps=int(gpu_fps), cpu_fps=int(cpu_fps), predicted_fps=int(predicted),
         bottleneck=bottleneck, frame_cap=frame_cap,
         upscaler_mode=upscaler, upscaler_tech=_upscaler_tech(gpu), quality_step=step,
-        settings=settings, cfg=cfg_lines, warnings=warnings,
+        settings=settings, cfg=cfg_lines, warnings=warnings, overrides=applied,
         tweaks=_evaluate_tweaks(db, profile, gpu, cpu, install_drive_media),
         headroom_note=headroom,
     )

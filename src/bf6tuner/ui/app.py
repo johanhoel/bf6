@@ -14,7 +14,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QApplication, QButtonGroup, QCheckBox, QComboBox, QFileDialog, QFrame,
+    QAbstractSpinBox, QApplication, QButtonGroup, QCheckBox, QComboBox, QFileDialog, QFrame,
     QGridLayout, QHBoxLayout, QHeaderView, QLabel, QMainWindow, QMessageBox,
     QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy, QSpinBox, QTableWidget,
     QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget,
@@ -81,6 +81,9 @@ class MainWindow(QMainWindow):
         self.game = paths.GamePaths()
         self.rec: Recommendation | None = None
         self.comparison: compare.Comparison | None = None
+        self.setting_overrides: dict = prefs.load_setting_overrides()
+        self._setting_editors: dict[str, QWidget] = {}
+        self._setting_rows: dict[str, int] = {}
         self._loading = True
 
         self.setWindowTitle(f"{APP_NAME} {__version__} - Battlefield 6 configurator")
@@ -270,8 +273,11 @@ class MainWindow(QMainWindow):
         self.comparison_area = self._make_scroll()
         self.tabs.addTab(self.comparison_area, "Current vs recommended")
 
-        self.settings_table = self._make_table(["Setting", "Value", "Why"], [260, 170, -1])
-        self.tabs.addTab(self._wrap(self.settings_table), "In-game settings")
+        self.settings_table = self._make_table(
+            ["Setting", "Value", "", "Why"], [250, 200, 84, -1]
+        )
+        self.settings_table.verticalHeader().setDefaultSectionSize(38)
+        self.tabs.addTab(self._build_settings_tab(), "In-game settings")
 
         self.cfg_view = QPlainTextEdit()
         self.cfg_view.setReadOnly(True)
@@ -286,6 +292,197 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(self.tabs, 1)
         return panel
+
+
+    def _build_settings_tab(self) -> QWidget:
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 10, 0, 0)
+        layout.setSpacing(8)
+
+        row = QHBoxLayout()
+        row.setContentsMargins(6, 0, 6, 0)
+        self.override_note = dim(
+            "Every value here is editable. Change one and the prediction, the frame cap "
+            "and the comparison all update to match."
+        )
+        row.addWidget(self.override_note, 1)
+
+        self.reset_overrides_button = QPushButton("Reset all to recommended")
+        self.reset_overrides_button.clicked.connect(self.reset_all_overrides)
+        row.addWidget(self.reset_overrides_button)
+        layout.addLayout(row)
+
+        layout.addWidget(self.settings_table, 1)
+        return container
+
+    def _make_editor(self, choice, setting: dict) -> QWidget | None:
+        """An editor matched to the setting's type, or None if it is not ours to change."""
+        # "keep" covers the settings the app never writes (mouse and audio). Field
+        # of view and brightness are personal but still written, so they stay
+        # editable - they are the ones people most want to set themselves.
+        if choice.value == "keep" or setting.get("type") == "resolution":
+            return None
+
+        kind = setting.get("type")
+        if kind in ("enum", "bool", "upscaler") or setting.get("options"):
+            box = QComboBox()
+            options = setting.get("options")
+            if not options and kind == "bool":
+                options = [{"value": 0, "label": "Off"}, {"value": 1, "label": "On"}]
+            for option in options or []:
+                box.addItem(str(option["label"]), option["value"])
+            box.currentIndexChanged.connect(
+                lambda _=0, sid=choice.setting_id: self._on_editor_changed(sid)
+            )
+            return box
+
+        if kind == "slider":
+            spin = QSpinBox()
+            spin.setRange(int(setting.get("min", 0)), int(setting.get("max", 1000)))
+            unit = setting.get("unit", "")
+            if unit and len(unit) <= 6:
+                spin.setSuffix(f" {unit}")
+            spin.setButtonSymbols(QAbstractSpinBox.UpDownArrows)
+            spin.setKeyboardTracking(False)
+            spin.valueChanged.connect(
+                lambda _=0, sid=choice.setting_id: self._on_editor_changed(sid)
+            )
+            return spin
+
+        return None
+
+    def _sync_settings_table(self) -> None:
+        """Fill the table, creating each row's editor once and updating it after.
+
+        Rebuilding the table would destroy the widget whose signal we are inside,
+        so rows are created on the first pass and only their values change later.
+        """
+        rec = self.rec
+        assert rec is not None
+        table = self.settings_table
+        building = table.rowCount() == 0
+
+        if building:
+            table.setRowCount(len(rec.settings))
+
+        for row, choice in enumerate(rec.settings):
+            setting = self.db.setting(choice.setting_id) or {}
+            self._setting_rows[choice.setting_id] = row
+
+            if building:
+                name = QTableWidgetItem(choice.label)
+                name.setToolTip(choice.menu)
+                table.setItem(row, 0, name)
+
+                editor = self._make_editor(choice, setting)
+                if editor is not None:
+                    self._setting_editors[choice.setting_id] = editor
+                    table.setCellWidget(row, 1, editor)
+                else:
+                    table.setItem(row, 1, QTableWidgetItem(""))
+
+                if editor is not None:
+                    reset = QPushButton("Reset")
+                    reset.setFlat(True)
+                    reset.clicked.connect(
+                        lambda _=False, sid=choice.setting_id: self.reset_override(sid)
+                    )
+                    table.setCellWidget(row, 2, reset)
+
+                table.setItem(row, 3, QTableWidgetItem(""))
+
+            name_item = table.item(row, 0)
+            if name_item is not None:
+                name_item.setText(("• " if choice.overridden else "") + choice.label)
+                if choice.overridden:
+                    font = QFont()
+                    font.setBold(True)
+                    name_item.setFont(font)
+                    name_item.setForeground(Qt.white)
+                else:
+                    name_item.setFont(QFont())
+
+            editor = self._setting_editors.get(choice.setting_id)
+            if editor is not None:
+                editor.blockSignals(True)
+                if isinstance(editor, QComboBox):
+                    index = editor.findData(choice.value)
+                    if index >= 0:
+                        editor.setCurrentIndex(index)
+                elif isinstance(editor, QSpinBox):
+                    try:
+                        editor.setValue(int(round(float(choice.value))))
+                    except (TypeError, ValueError):
+                        pass
+                editor.blockSignals(False)
+            else:
+                cell = table.item(row, 1)
+                if cell is not None:
+                    cell.setText("leave as-is" if choice.value == "keep" else choice.display)
+                    cell.setForeground(Qt.gray)
+
+            reset_button = table.cellWidget(row, 2)
+            if isinstance(reset_button, QPushButton):
+                reset_button.setEnabled(choice.overridden)
+                reset_button.setToolTip(
+                    f"Back to the recommended {choice.recommended_display}"
+                    if choice.overridden else "Matches the recommendation"
+                )
+
+            why = table.item(row, 3)
+            if why is not None:
+                why.setText(choice.reason)
+                why.setToolTip(choice.reason)
+
+        count = len(rec.overrides)
+        self.reset_overrides_button.setEnabled(bool(count))
+        self.tabs.setTabText(1, f"In-game settings ({count} changed)" if count
+                             else "In-game settings")
+
+    # -- override handling -------------------------------------------------
+
+    def _on_editor_changed(self, setting_id: str) -> None:
+        if self._loading:
+            return
+        editor = self._setting_editors.get(setting_id)
+        if editor is None:
+            return
+        value = editor.currentData() if isinstance(editor, QComboBox) else editor.value()
+
+        choice = next((c for c in (self.rec.settings if self.rec else [])
+                       if c.setting_id == setting_id), None)
+        # Selecting the recommended value again is a reset, not an override.
+        if choice is not None and not choice.overridden and value == choice.value:
+            return
+        if choice is not None and choice.overridden and value == choice.recommended_value:
+            self.reset_override(setting_id)
+            return
+
+        self.setting_overrides[setting_id] = value
+        prefs.set_setting_override(setting_id, value)
+        self.refresh()
+
+    def reset_override(self, setting_id: str) -> None:
+        self.setting_overrides.pop(setting_id, None)
+        prefs.set_setting_override(setting_id, None)
+        self.refresh()
+
+    def reset_all_overrides(self) -> None:
+        if not self.setting_overrides:
+            return
+        count = len(self.setting_overrides)
+        confirm = QMessageBox.question(
+            self, "Reset settings",
+            f"Drop {count} setting(s) you changed and go back to the recommendation "
+            f"for the {self.current_target().preset} preset?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+        self.setting_overrides.clear()
+        prefs.clear_setting_overrides()
+        self.refresh()
 
     def _make_table(self, headers: list[str], widths: list[int]) -> QTableWidget:
         table = QTableWidget(0, len(headers))
@@ -459,7 +656,10 @@ class MainWindow(QMainWindow):
             self.profile.drive_media.get(self.game.install_drive)
             if self.game.install_drive else None
         )
-        self.rec = recommend(self.db, self.profile, self.current_target(), install_drive_media=media)
+        self.rec = recommend(
+            self.db, self.profile, self.current_target(), install_drive_media=media,
+            overrides=self.setting_overrides,
+        )
         self.comparison = compare.from_paths(
             self.db, self.rec, self.game.profsave, self.game.user_cfg
         )
@@ -502,27 +702,7 @@ class MainWindow(QMainWindow):
             note = rec.headroom_note + "  " + note
         self.prediction_note.setText(note)
 
-        table = self.settings_table
-        table.setRowCount(0)
-        for choice in rec.settings:
-            row = table.rowCount()
-            table.insertRow(row)
-            name = QTableWidgetItem(choice.label)
-            name.setToolTip(choice.menu)
-            value_text = "leave as-is" if choice.value == "keep" else choice.display
-            value = QTableWidgetItem(value_text)
-            if choice.personal:
-                value.setForeground(Qt.gray)
-            else:
-                font = QFont()
-                font.setBold(True)
-                value.setFont(font)
-            why = QTableWidgetItem(choice.reason)
-            why.setToolTip(choice.reason)
-            table.setItem(row, 0, name)
-            table.setItem(row, 1, value)
-            table.setItem(row, 2, why)
-        table.resizeRowsToContents()
+        self._sync_settings_table()
 
         self.cfg_view.setPlainText(writer.render_user_cfg(rec).replace("\r\n", "\n"))
 
