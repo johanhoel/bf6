@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import sys
 import traceback
+from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QAction, QColor, QFont, QIcon, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QAbstractSpinBox, QApplication, QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox,
@@ -21,7 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import APP_NAME, __version__
-from .. import compare, database, hardware, icon, paths, prefs, update, writer
+from .. import benchmark, compare, database, hardware, icon, paths, prefs, update, writer
 from ..engine import LINKED_CFG_KEYS, PRESETS, Recommendation, Target, recommend
 from . import theme
 from .locate import LocateDialog
@@ -140,6 +141,32 @@ class UpdateCheckWorker(QThread):
         self.finished_ok.emit(update.check_for_update())
 
 
+class BenchmarkWorker(QThread):
+    """Runs PresentMon and parses its output; blocks for the whole capture
+    duration, so this has to be off the UI thread."""
+
+    finished_ok = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, exe: Path, process_name: str, output_csv: Path, duration_s: int) -> None:
+        super().__init__()
+        self.exe = exe
+        self.process_name = process_name
+        self.output_csv = output_csv
+        self.duration_s = duration_s
+
+    def run(self) -> None:
+        try:
+            benchmark.run_capture(self.exe, self.process_name, self.output_csv, self.duration_s)
+            stats = benchmark.parse_csv(self.output_csv)
+        except benchmark.BenchmarkError as exc:
+            self.failed.emit(str(exc))
+        except Exception:
+            self.failed.emit(traceback.format_exc()[-1500:])
+        else:
+            self.finished_ok.emit(stats)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, db: database.Database) -> None:
         super().__init__()
@@ -162,6 +189,7 @@ class MainWindow(QMainWindow):
         self._cfg_filter: str = ""
         self.update_info: update.UpdateInfo | None = None
         self._busy_count = 0
+        self._presentmon_path: Path | None = None
         self._loading = True
 
         self.setWindowTitle(f"{APP_NAME} {__version__} - Battlefield 6 configurator")
@@ -647,8 +675,233 @@ class MainWindow(QMainWindow):
         self.checks_area = self._make_scroll()
         self.tabs.addTab(self.checks_area, "System checks")
 
+        self.tabs.addTab(self._build_benchmark_tab(), "Benchmark")
+        self._fill_benchmark_results()
+
         layout.addWidget(self.tabs, 1)
         return panel
+
+    # -- benchmark (PresentMon) ----------------------------------------------
+
+    def _build_benchmark_tab(self) -> QWidget:
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 10, 0, 0)
+        layout.setSpacing(10)
+
+        setup_card, setup_layout = card("Capture")
+
+        path_row = QHBoxLayout()
+        self.presentmon_label = dim("PresentMon not located.")
+        path_row.addWidget(self.presentmon_label, 1)
+        locate_pm_button = QPushButton("Locate PresentMon...")
+        locate_pm_button.clicked.connect(self.locate_presentmon)
+        path_row.addWidget(locate_pm_button)
+        open_folder_button = QPushButton("Open captures folder")
+        open_folder_button.clicked.connect(self.open_benchmark_folder)
+        path_row.addWidget(open_folder_button)
+        setup_layout.addLayout(path_row)
+
+        control_row = QHBoxLayout()
+        control_row.addWidget(dim("Duration"))
+        self.benchmark_duration = QSpinBox()
+        self.benchmark_duration.setRange(10, 900)
+        self.benchmark_duration.setSingleStep(10)
+        self.benchmark_duration.setValue(60)
+        self.benchmark_duration.setSuffix(" s")
+        control_row.addWidget(self.benchmark_duration)
+        control_row.addStretch(1)
+        self.start_benchmark_button = QPushButton("Start Recording")
+        self.start_benchmark_button.setObjectName("Primary")
+        self.start_benchmark_button.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
+        self.start_benchmark_button.setEnabled(False)
+        self.start_benchmark_button.clicked.connect(self.start_benchmark)
+        control_row.addWidget(self.start_benchmark_button)
+        setup_layout.addLayout(control_row)
+
+        self.benchmark_progress = QProgressBar()
+        self.benchmark_progress.setVisible(False)
+        setup_layout.addWidget(self.benchmark_progress)
+
+        setup_layout.addWidget(dim(
+            "Captures real frame times via PresentMon while Battlefield 6 is running, then "
+            "compares the measured average / 1% low / 0.1% low FPS against this app's "
+            "prediction for your current settings - closing the loop the README talks about: "
+            "the estimate is a model, this is a measurement. Every capture is saved "
+            "automatically below. Needs PresentMon (github.com/GameTechDev/PresentMon) - "
+            "never bundled or auto-downloaded, same policy as everything else this app fetches."
+        ))
+        layout.addWidget(setup_card)
+
+        self.benchmark_results_area = self._make_scroll()
+        layout.addWidget(self.benchmark_results_area, 1)
+
+        self._refresh_presentmon_status()
+        return container
+
+    def _refresh_presentmon_status(self) -> None:
+        saved = prefs.load().get("presentmon_exe")
+        found = benchmark.find_presentmon(Path(saved) if saved else None)
+        self._presentmon_path = found
+        if found:
+            self.presentmon_label.setText(f"PresentMon: {found}")
+            self.presentmon_label.setStyleSheet("")
+        else:
+            self.presentmon_label.setText(
+                "PresentMon not located - download it from github.com/GameTechDev/PresentMon "
+                "and click Locate."
+            )
+            self.presentmon_label.setStyleSheet(f"color: {theme.WARN};")
+        self.start_benchmark_button.setEnabled(found is not None)
+
+    def locate_presentmon(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Locate PresentMon", "", "Executable (*.exe);;All files (*)",
+        )
+        if not path:
+            return
+        prefs.set_override("presentmon_exe", path)
+        self._refresh_presentmon_status()
+
+    def open_benchmark_folder(self) -> None:
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(benchmark.benchmark_root())))
+
+    def start_benchmark(self) -> None:
+        if self.rec is None or self._presentmon_path is None:
+            return
+        if not paths.is_game_running():
+            QMessageBox.warning(
+                self, "Battlefield 6 is not running",
+                "Start the game first - PresentMon needs a live process to capture frames from.",
+            )
+            return
+
+        process_name = self.game.executable.name if self.game.executable else "bf6.exe"
+        duration = self.benchmark_duration.value()
+        output_csv = benchmark.benchmark_root() / "_last_capture.csv"
+
+        self.start_benchmark_button.setEnabled(False)
+        self._busy_start()
+        self.benchmark_progress.setVisible(True)
+        self.benchmark_progress.setRange(0, duration)
+        self.benchmark_progress.setValue(0)
+        self.statusBar().showMessage(f"Recording for {duration}s - play normally...")
+
+        self._benchmark_elapsed = 0
+        self._benchmark_timer = QTimer(self)
+        self._benchmark_timer.setInterval(1000)
+        self._benchmark_timer.timeout.connect(self._on_benchmark_tick)
+        self._benchmark_timer.start()
+
+        self._benchmark_worker = BenchmarkWorker(self._presentmon_path, process_name, output_csv, duration)
+        self._benchmark_worker.finished_ok.connect(self._on_benchmark_finished)
+        self._benchmark_worker.failed.connect(self._on_benchmark_failed)
+        self._benchmark_worker.start()
+
+    def _on_benchmark_tick(self) -> None:
+        self._benchmark_elapsed += 1
+        self.benchmark_progress.setValue(min(self._benchmark_elapsed, self.benchmark_progress.maximum()))
+
+    def _end_benchmark_run(self) -> None:
+        timer = getattr(self, "_benchmark_timer", None)
+        if timer is not None:
+            timer.stop()
+        self.benchmark_progress.setVisible(False)
+        self.start_benchmark_button.setEnabled(self._presentmon_path is not None)
+        self._busy_stop()
+
+    def _on_benchmark_finished(self, stats: benchmark.FrameStats) -> None:
+        self._end_benchmark_run()
+        rec = self.rec
+        profile = self.profile
+        recording = benchmark.Recording(
+            stats=stats,
+            taken_at=datetime.now().astimezone().isoformat(timespec="seconds"),
+            preset=rec.target.preset, predicted_fps=rec.predicted_fps,
+            gpu_fps=rec.gpu_fps, cpu_fps=rec.cpu_fps, bottleneck=rec.bottleneck,
+            resolution=f"{rec.target.width}x{rec.target.height}", refresh_hz=rec.target.refresh_hz,
+            cpu_name=profile.cpu_name, gpu_name=profile.gpu_name,
+        )
+        benchmark.save_recording(recording)
+        self._fill_benchmark_results()
+        self.statusBar().showMessage(
+            f"Captured {stats.sample_count} frames - measured {stats.avg_fps:.0f} FPS "
+            f"vs predicted {rec.predicted_fps} FPS."
+        )
+
+    def _on_benchmark_failed(self, message: str) -> None:
+        self._end_benchmark_run()
+        QMessageBox.warning(self, "Recording failed", message)
+
+    def _fill_benchmark_results(self) -> None:
+        container = self.benchmark_results_area.widget()
+        layout = container.layout()
+        while layout.count():
+            item = layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        recordings = benchmark.list_recordings()
+        if not recordings:
+            frame, inner = card("")
+            inner.addWidget(dim(
+                "No recordings yet. Locate PresentMon, start the game, and hit Start Recording."
+            ))
+            layout.addWidget(frame)
+        for path, recording in recordings:
+            layout.addWidget(self._benchmark_card(path, recording))
+        layout.addStretch(1)
+
+        count = len(recordings)
+        self.tabs.setTabText(5, f"Benchmark ({count})" if count else "Benchmark")
+
+    def _benchmark_card(self, path: Path, recording: benchmark.Recording) -> QWidget:
+        frame, inner = card("")
+        stats = recording.stats
+        delta = recording.delta_fps
+        delta_colour = theme.OK if delta >= 0 else (theme.BAD if delta < -10 else theme.WARN)
+
+        heading = QLabel(
+            f"<b>{recording.taken_at.replace('T', ' ')[:19]}</b>"
+            f"&nbsp;&nbsp;<span style='color:{theme.TEXT_DIM}'>"
+            f"{recording.preset} · {recording.resolution} @ {recording.refresh_hz} Hz · "
+            f"{recording.gpu_name}</span>"
+        )
+        heading.setWordWrap(True)
+        inner.addWidget(heading)
+
+        summary = QLabel(
+            f"Measured <b>{stats.avg_fps:.0f} FPS</b> average"
+            + (f", <b>{stats.low_1pct_fps:.0f}</b> 1% low" if stats.low_1pct_fps else "")
+            + (f", <b>{stats.low_01pct_fps:.0f}</b> 0.1% low" if stats.low_01pct_fps else "")
+            + f" over {stats.sample_count} frames / {stats.duration_s:.0f}s"
+            f"&nbsp;&nbsp;<span style='color:{theme.TEXT_DIM}'>vs predicted "
+            f"{recording.predicted_fps} FPS ({recording.bottleneck}-limited)</span>"
+            f"&nbsp;&nbsp;<span style='color:{delta_colour}; font-weight:700'>{delta:+d}</span>"
+        )
+        summary.setWordWrap(True)
+        inner.addWidget(summary)
+
+        button_row = QHBoxLayout()
+        button_row.addStretch(1)
+        delete_button = QPushButton("Delete")
+        delete_button.setObjectName("TableButton")
+        delete_button.clicked.connect(lambda _=False, p=path: self.delete_benchmark_recording(p))
+        button_row.addWidget(delete_button)
+        inner.addLayout(button_row)
+        return frame
+
+    def delete_benchmark_recording(self, path: Path) -> None:
+        confirm = QMessageBox.question(
+            self, "Delete recording", "Delete this recorded capture?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+        benchmark.delete_recording(path)
+        self._fill_benchmark_results()
 
 
     def _build_table_nav_row(

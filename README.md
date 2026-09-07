@@ -76,6 +76,13 @@ sidebar's "Profiles" card lets you save the current preset, target and every
 override under a name ("Tournament", "Chill") and switch between as many as
 you want, not just tweak the same one slot.
 
+**Checks its own homework** — the Benchmark tab drives
+[PresentMon](https://github.com/GameTechDev/PresentMon) (the same open-source
+capture engine behind NVIDIA FrameView and CapFrameX) while you actually play,
+then shows the measured average / 1% low / 0.1% low FPS next to what the app
+predicted for those exact settings. Every capture is saved automatically.
+PresentMon itself is not bundled — point the app at your own copy once.
+
 **Writes** — `User.cfg` into the game folder (with the right extension, which is
 the single most common reason these files "do nothing"), and optionally patches
 `PROFSAVE_profile`. Both are snapshotted together first, and one click puts
@@ -302,7 +309,7 @@ only thing that needs changing.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests -q          # 158 tests
+python -m pytest tests -q          # 183 tests
 PYTHONPATH=src python -m bf6tuner --preset competitive   # CLI, runs on Linux too
 ```
 
@@ -325,6 +332,7 @@ bf6/
 │   ├── database.py       encrypted-bundle-first loader
 │   ├── update.py         checks GitHub for a newer build, never blocks or raises
 │   ├── icon.py           the app icon, drawn in pure Python - shared by the build and the running app
+│   ├── benchmark.py      real frame-time capture via PresentMon, checked against the prediction
 │   ├── cli.py            headless mode
 │   └── ui/               Qt window, comparison view, restore/locate/update dialogs, theme
 ├── packaging/            build.py, build.bat, PyInstaller spec, icon generator

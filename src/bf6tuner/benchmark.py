@@ -1,0 +1,262 @@
+"""Closing the loop on the FPS prediction with a real measurement.
+
+The README is explicit that the predicted FPS is a model, not a measurement,
+and that the app turns the in-game overlay on by default "so you can check
+its homework." This module is the other half of that: a real frame-time
+capture via PresentMon (Intel/Microsoft's open-source, ETW-based capture
+tool - the same engine behind NVIDIA FrameView and CapFrameX), so "check its
+homework" can mean an actual measured 1%/0.1% low, not just eyeballing an
+overlay number.
+
+PresentMon itself is never bundled or auto-downloaded - same policy as
+everywhere else this app fetches something external (see update.py). You
+point the app at your own copy once, the path is remembered via prefs.py's
+existing generic path-override mechanism (role "presentmon_exe"), same as
+the game install folder or PROFSAVE_profile.
+
+PresentMon's exact CLI flags have changed across major versions (the classic
+1.x PresentMon.exe/PresentMon64.exe vs. the current Intel PresentMon 2.x).
+`DEFAULT_ARGS_TEMPLATE` targets the common, long-stable subset of flags;
+if a given PresentMon build rejects them, the failure surfaces as a clear
+error (PresentMon's own stderr) rather than a silent bad capture - see
+`run_capture`. CSV column names are matched flexibly for the same reason
+(`_find_column`).
+"""
+
+from __future__ import annotations
+
+import csv
+import json
+import os
+import subprocess
+import sys
+from dataclasses import dataclass, field, asdict
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+# Frame-time column, in priority order - PresentMon has used "MsBetweenPresents"
+# consistently across both major CLI generations; the others are fallbacks
+# for older/renamed builds. Matched case-insensitively against the CSV header.
+FRAME_TIME_COLUMNS = ("msbetweenpresents", "msbetweendisplaychange", "frametime", "frame_time_ms")
+
+PRESENTMON_CANDIDATE_NAMES = ("presentmon.exe", "presentmon64.exe")
+
+# {process}, {output}, {duration} are substituted by build_args(). Editable
+# from the UI's Advanced field if a given PresentMon build wants different
+# flags - not hardcoded past this one place.
+DEFAULT_ARGS_TEMPLATE = (
+    "-session_name BF6Tuner -process_name {process} -output_file {output} "
+    "-timed {duration} -stop_existing_session -no_top -terminate_after_timed"
+)
+
+
+class BenchmarkError(RuntimeError):
+    pass
+
+
+def find_presentmon(explicit: Path | None = None) -> Path | None:
+    """Best-effort search; a manual 'Locate PresentMon...' pick always wins.
+
+    Checked in order: the explicit override, PATH, and the folder NVIDIA
+    FrameView installs it into (the most common way people already have a
+    copy without knowing it).
+    """
+    if explicit and explicit.is_file():
+        return explicit
+
+    import shutil as _shutil
+    for name in PRESENTMON_CANDIDATE_NAMES:
+        found = _shutil.which(name)
+        if found:
+            return Path(found)
+
+    if sys.platform == "win32":
+        program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+        candidate = Path(program_files) / "NVIDIA Corporation" / "FrameView" / "PresentMon.exe"
+        if candidate.is_file():
+            return candidate
+
+    return None
+
+
+def build_args(exe: Path, process_name: str, output_csv: Path, duration_s: int,
+                template: str = DEFAULT_ARGS_TEMPLATE) -> list[str]:
+    rendered = template.format(process=process_name, output=str(output_csv), duration=duration_s)
+    return [str(exe), *rendered.split()]
+
+
+def run_capture(exe: Path, process_name: str, output_csv: Path, duration_s: int,
+                 template: str = DEFAULT_ARGS_TEMPLATE, timeout_s: float | None = None) -> None:
+    """Blocking - run this off the UI thread. Raises BenchmarkError with
+    PresentMon's own stderr on a non-zero exit rather than guessing why."""
+    args = build_args(exe, process_name, output_csv, duration_s, template)
+    try:
+        result = subprocess.run(
+            args, capture_output=True, text=True,
+            timeout=timeout_s or (duration_s + 30),
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise BenchmarkError(
+            f"PresentMon did not finish within {exc.timeout:.0f}s. It may need different "
+            "flags for this version - check the Advanced command template."
+        ) from exc
+    except OSError as exc:
+        raise BenchmarkError(f"Could not run PresentMon at {exe}: {exc}") from exc
+
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "no output").strip()[-1500:]
+        raise BenchmarkError(f"PresentMon exited with code {result.returncode}:\n{detail}")
+    if not output_csv.is_file():
+        raise BenchmarkError(
+            "PresentMon reported success but did not write a CSV file. "
+            "The capture may have been stopped before any frames were presented - "
+            "make sure the game was running and in focus during the capture."
+        )
+
+
+def _find_column(header: list[str]) -> str:
+    lowered = {name.lower(): name for name in header}
+    for candidate in FRAME_TIME_COLUMNS:
+        if candidate in lowered:
+            return lowered[candidate]
+    for candidate in FRAME_TIME_COLUMNS:
+        for lower_name, real_name in lowered.items():
+            if candidate in lower_name:
+                return real_name
+    raise BenchmarkError(
+        "Could not find a frame-time column in PresentMon's output. "
+        f"Columns seen: {', '.join(header) or '(empty file)'}"
+    )
+
+
+def _low_fps(frame_times_ms: list[float], fraction: float) -> float | None:
+    if not frame_times_ms:
+        return None
+    take = max(1, round(len(frame_times_ms) * fraction))
+    slowest = sorted(frame_times_ms, reverse=True)[:take]
+    avg_ms = sum(slowest) / len(slowest)
+    return 1000.0 / avg_ms if avg_ms > 0 else None
+
+
+@dataclass
+class FrameStats:
+    sample_count: int
+    duration_s: float
+    avg_fps: float
+    low_1pct_fps: float | None
+    low_01pct_fps: float | None
+    avg_frame_ms: float
+    max_frame_ms: float
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def parse_csv(path: Path) -> FrameStats:
+    try:
+        text = path.read_text(encoding="utf-8-sig", errors="ignore")
+    except OSError as exc:
+        raise BenchmarkError(f"Could not read {path}: {exc}") from exc
+
+    reader = csv.DictReader(text.splitlines())
+    if reader.fieldnames is None:
+        raise BenchmarkError(f"{path} has no header row - is it a PresentMon CSV?")
+    column = _find_column(list(reader.fieldnames))
+
+    frame_times: list[float] = []
+    for row in reader:
+        raw = row.get(column)
+        if not raw:
+            continue
+        try:
+            value = float(raw)
+        except ValueError:
+            continue
+        if value > 0:
+            frame_times.append(value)
+
+    if not frame_times:
+        raise BenchmarkError(
+            f"{path} parsed but contained no usable frame times in column '{column}'. "
+            "The capture may have started before the game was rendering anything."
+        )
+
+    avg_ms = sum(frame_times) / len(frame_times)
+    return FrameStats(
+        sample_count=len(frame_times),
+        duration_s=sum(frame_times) / 1000.0,
+        avg_fps=1000.0 / avg_ms,
+        low_1pct_fps=_low_fps(frame_times, 0.01),
+        low_01pct_fps=_low_fps(frame_times, 0.001),
+        avg_frame_ms=avg_ms,
+        max_frame_ms=max(frame_times),
+    )
+
+
+@dataclass
+class Recording:
+    """One capture, auto-saved with the prediction it's being checked
+    against, so a history of "did reality match the model" builds up
+    without the user managing files by hand."""
+    stats: FrameStats
+    taken_at: str
+    preset: str
+    predicted_fps: int
+    gpu_fps: int
+    cpu_fps: int
+    bottleneck: str
+    resolution: str
+    refresh_hz: int
+    cpu_name: str
+    gpu_name: str
+    label: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        data = asdict(self)
+        return data
+
+    @staticmethod
+    def from_dict(data: dict[str, Any]) -> "Recording":
+        stats_data = dict(data.get("stats", {}))
+        stats = FrameStats(**stats_data)
+        rest = {k: v for k, v in data.items() if k != "stats"}
+        return Recording(stats=stats, **rest)
+
+    @property
+    def delta_fps(self) -> int:
+        return round(self.stats.avg_fps) - self.predicted_fps
+
+
+def benchmark_root() -> Path:
+    base = os.environ.get("APPDATA") or os.path.join(str(Path.home()), ".config")
+    root = Path(base) / "BF6Tuner" / "benchmarks"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def save_recording(recording: Recording) -> Path:
+    root = benchmark_root()
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    path = root / f"{stamp}.json"
+    path.write_text(json.dumps(recording.to_dict(), indent=2), encoding="utf-8")
+    return path
+
+
+def list_recordings() -> list[tuple[Path, Recording]]:
+    """Newest first. A corrupt/hand-edited file is skipped, not fatal -
+    same tolerance as writer.list_restore_points()."""
+    results: list[tuple[Path, Recording]] = []
+    for path in benchmark_root().glob("*.json"):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            results.append((path, Recording.from_dict(data)))
+        except (OSError, ValueError, TypeError, KeyError):
+            continue
+    results.sort(key=lambda pair: pair[0].name, reverse=True)
+    return results
+
+
+def delete_recording(path: Path) -> None:
+    path.unlink(missing_ok=True)

@@ -74,6 +74,16 @@ database.load()  ───┘         (matching,            │            └�
   baked into the .exe) and `ui/app.py`'s `app_icon()` (renders the same
   artwork at runtime for the window/taskbar icon, so a source checkout looks
   the same as the shipped build).
+- **`benchmark.py`** — closes the loop on the FPS prediction with a real
+  measurement: drives PresentMon (Intel/Microsoft's open-source ETW frame
+  capture tool, the engine behind NVIDIA FrameView/CapFrameX) as an external
+  process, parses its CSV output into average/1%-low/0.1%-low FPS, and
+  auto-saves every capture (with the prediction it's being checked against)
+  under `%APPDATA%\BF6Tuner\benchmarks\`. PresentMon itself is never
+  bundled or auto-downloaded — same "point the app at your own copy" policy
+  as everywhere else external (see `update.py`); the path is remembered via
+  `prefs.py`'s existing generic path-override mechanism (role
+  `"presentmon_exe"`), no new storage needed.
 - **`update.py`** / **`_build_info.py`** — checks the GitHub API for whether
   `main` has moved on since the commit this build was made from; never raises,
   never auto-downloads. `_build_info.py` is build-generated (gitignored, same
@@ -327,6 +337,70 @@ tests as of the last README update).
 
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
+
+### 2026-09-07 (10) — Real performance logging via PresentMon
+User asked for auto-logged performance testing to check the FPS prediction
+against reality - scoped via AskUserQuestion to "full in-app recording"
+(vs. a lightweight external-tool pointer, or trying BF6's own unconfirmed
+legacy frame-log cvar first).
+
+- **New `benchmark.py`**: `find_presentmon()` (PATH + the NVIDIA FrameView
+  install location + an explicit override, never bundled/downloaded -
+  matches `update.py`'s policy on external things), `build_args()` /
+  `run_capture()` (subprocess wrapper, `BenchmarkError` on non-zero exit /
+  missing output CSV / timeout - PresentMon's own stderr surfaces to the
+  user rather than a guess), `parse_csv()` (flexible column-name matching -
+  PresentMon's CLI flags and CSV headers have changed across its 1.x/2.x
+  generations, so this matches `MsBetweenPresents` case-insensitively with
+  fuzzy fallbacks rather than one hardcoded name), `FrameStats`
+  (avg/1%-low/0.1%-low FPS via the standard "average of the slowest N%
+  of frames" definition), `Recording` (a stats snapshot plus the
+  prediction it's checked against - preset, predicted/gpu/cpu FPS,
+  bottleneck, hardware), and `save_recording`/`list_recordings`/
+  `delete_recording` (`%APPDATA%\BF6Tuner\benchmarks\*.json`, corrupt files
+  skipped not fatal - same tolerance as `writer.list_restore_points()`).
+- **New "Benchmark" tab**: Locate PresentMon (reuses `prefs.set_override`
+  with a new role, `"presentmon_exe"` - no prefs.py changes needed),
+  a duration spinbox, Start Recording (guarded on both PresentMon being
+  found *and* `paths.is_game_running()` - the opposite precondition from
+  every config-writing action, which all require the game to be *closed*),
+  a countdown progress bar, and an auto-populated history list of every
+  past capture with a measured-vs-predicted delta (colour-coded: green at
+  or above prediction, amber within 10 FPS under, red beyond that).
+  `BenchmarkWorker` (new `QThread`, alongside `DetectWorker`/
+  `UpdateCheckWorker`) runs the capture off the UI thread since it blocks
+  for the whole recording duration.
+- 25 new tests in `test_benchmark.py` (183 total) - CSV parsing (multiple
+  column-name variants, non-numeric/zero rows skipped not fatal, a
+  no-usable-data file raises a clear error), the 1%/0.1% low percentile
+  math against known synthetic distributions, arg construction, `Recording`
+  round-tripping, and `run_capture`'s error paths via a mocked
+  `subprocess.run` (non-zero exit, missing output file, timeout) - actually
+  launching PresentMon can't be exercised in CI (no game, no ETW capture
+  rights on a GitHub Actions runner, PresentMon isn't installed there), so
+  the module is structured to make everything *except* the literal
+  subprocess call fully unit-testable.
+- Verified the UI wiring by hand, off-screen: PresentMon detection/status
+  text, the Start button's enabled state reacting to both preconditions,
+  the full worker lifecycle via a fake (non-executable) "PresentMon.exe" -
+  confirmed `_busy_count`/button-disabled state through a real
+  `BenchmarkWorker` run that fails fast (invalid exe), a simulated
+  successful finish saving and listing a recording with the tab count
+  updating, and delete removing it again. Also hardened
+  `_end_benchmark_run` to tolerate being called before the timer exists
+  (found by a test calling the finish-handler directly, not reachable via
+  the real UI flow, but cheap and consistent with this codebase's general
+  defensive style).
+- **Not verified**: an actual PresentMon capture against a running game -
+  I have no display and no game to test against. The CLI flags in
+  `DEFAULT_ARGS_TEMPLATE` target the long-stable common subset across
+  PresentMon's versions but are unconfirmed against whatever version the
+  user ends up with; a mismatch surfaces as a clear PresentMon-stderr error
+  rather than a silent bad capture, and there's no user-facing way yet to
+  override the template if the default flags are wrong for their build -
+  worth adding an "Advanced" template override field if the defaults
+  don't work first try.
+- Followed the standing build/release workflow.
 
 ### 2026-09-07 (9) — Row height, round 3: 26px was too tight for combo/spin chrome
 User flagged (screenshot, "check the column in red") that the Value
