@@ -49,10 +49,17 @@ Balanced, Quality), with textures capped to your VRAM, an upscaler mode chosen
 from your GPU vendor and the gap to your target, and a frame cap computed from
 your refresh rate and what the machine can actually hold.
 
-**Lets you disagree** — every recommended value is editable. Change one and the
+**Lets you disagree** — every recommended in-game value is editable, and so is
+every `User.cfg` line the app decides to write. Change an in-game setting and the
 predicted frame rate, the frame cap and the comparison all follow, so you can see
-what your choice costs rather than guessing. Overrides persist across restarts and
-preset changes, are marked in the table, and reset individually or all at once.
+what your choice costs rather than guessing. `User.cfg` commands are policy calls,
+not a modelled frame-time cost, so overriding one is honestly shown as *not*
+moving the FPS estimate — the pros, cons, risk and confidence for that command are
+shown instead, and the real effect is yours to measure with the frame time graph.
+The frame cap itself lives in exactly one place (the in-game "Frame limit" control)
+so the file and the prediction can never disagree about it. Overrides of either
+kind persist across restarts and preset changes, are marked in their table, and
+reset individually or all at once.
 
 **Compares** — reads your *current* settings out of `PROFSAVE_profile` and your
 existing `User.cfg`, then shows every single change side by side with what it
@@ -171,6 +178,15 @@ the tests, builds both executables and drops them in the repo folder itself, so
 `BF6Tuner.exe` sits right next to the script. First run installs the Python
 dependencies and takes a few minutes; after that it is about a minute.
 
+The app also checks for you: on launch, and on demand via **Check for updates** in
+the header, it asks GitHub's API whether `main` has moved on since the commit this
+build was made from, and — if so — shows the commit messages for everything you'd
+be getting, so it's an informed decision rather than a blind pull. There is no
+auto-download (no formal release artifact to fetch without a browser — see "About
+`encrypted`" and "Getting the executable" above), so the dialog links straight to
+the GitHub Actions run that has the built executables attached. Never blocks
+startup, and a failed or offline check just stays quiet.
+
 **Or build it yourself** on any Windows machine with Python 3.11+:
 
 ```bat
@@ -276,7 +292,7 @@ only thing that needs changing.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests -q          # 117 tests
+python -m pytest tests -q          # 132 tests
 PYTHONPATH=src python -m bf6tuner --preset competitive   # CLI, runs on Linux too
 ```
 
@@ -297,10 +313,11 @@ bf6/
 │   ├── writer.py         rendering, restore points, PROFSAVE patching, reports
 │   ├── crypto.py         AES-256-GCM bundle format
 │   ├── database.py       encrypted-bundle-first loader
+│   ├── update.py         checks GitHub for a newer build, never blocks or raises
 │   ├── cli.py            headless mode
-│   └── ui/               Qt window, comparison view, restore dialog, theme
+│   └── ui/               Qt window, comparison view, restore/locate/update dialogs, theme
 ├── packaging/            build.py, build.bat, PyInstaller spec, icon generator
-└── tests/                engine policy, comparison, restore and crypto tests
+└── tests/                engine policy, comparison, restore, crypto and update tests
 ```
 
 ## Sources

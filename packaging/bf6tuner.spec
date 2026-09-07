@@ -15,7 +15,7 @@ a = Analysis(
     # Only the encrypted bundle ships. The plain JSON in data/ is deliberately
     # left out so a shipped build cannot fall back to editable files.
     datas=[(str(BUILD / "bf6tuner.db"), ".")],
-    hiddenimports=["bf6tuner._keyring"],
+    hiddenimports=["bf6tuner._keyring", "bf6tuner._build_info"],
     hookspath=[],
     runtime_hooks=[],
     excludes=[

@@ -101,6 +101,11 @@ class CfgLine:
     confidence: str = ""
     risk: str = ""
     header: bool = False
+    # Mirrors SettingChoice: what the engine chose, kept even when the user
+    # overrides it, so the UI can offer "back to recommended" and the report
+    # can show what was departed from.
+    recommended_value: Any = None
+    overridden: bool = False
 
 
 @dataclass
@@ -130,10 +135,15 @@ class Recommendation:
     tweaks: list[dict[str, Any]] = field(default_factory=list)
     headroom_note: str = ""
     overrides: dict[str, Any] = field(default_factory=dict)
+    cfg_overrides: dict[str, Any] = field(default_factory=dict)
 
     @property
     def overridden_settings(self) -> list[SettingChoice]:
         return [choice for choice in self.settings if choice.overridden]
+
+    @property
+    def overridden_cfg_lines(self) -> list[CfgLine]:
+        return [line for line in self.cfg if line.overridden]
 
 
 # --------------------------------------------------------------------------
@@ -570,9 +580,20 @@ def _build_cfg(
         lines.append(CfgLine(key=None, value=None, comment="Thread.* overrides deliberately omitted."))
         warnings.append(Warning_("info", "No Thread.* overrides were written", rationale))
 
-    free = 0
-    if target.background_load:
+    # When Thread.ProcessorCount is already capped (apply_threads), the two
+    # reserved threads are baked into the ProcessorCount value itself. Adding
+    # MinFreeProcessorCount on top would double-reserve them, shrinking the
+    # effective job pool by 4 instead of 2. Only apply the free-processor
+    # headroom when the count is not already limited.
+    if apply_threads:
+        free = 0
+    elif target.background_load:
+        # Background apps (Discord, browser, OBS) create real scheduling
+        # pressure. Leave enough headroom that the Windows scheduler can land
+        # that work without kicking a game thread off its core.
         free = 2 if threads >= 24 else 1
+    else:
+        free = 0
     emit("Thread.MinFreeProcessorCount", free,
          f"Leave {free} logical processor(s) for Windows and background apps."
          if free else "Let the job system use every thread.")
@@ -666,10 +687,41 @@ def _coerce_override(setting: dict[str, Any], value: Any) -> Any:
     return value
 
 
+# Driven by the 'frame_limit' in-game setting instead (see recommend()) so
+# there is exactly one place that owns the frame cap, not two that can drift
+# apart. Edit it from the In-game settings tab.
+LINKED_CFG_KEYS = {"GameTime.MaxVariableFps": "frame_limit"}
+
+
+def _coerce_cfg_override(command: dict[str, Any], value: Any) -> Any:
+    """Bring a stored User.cfg override back into the command's declared type,
+    round-tripped through JSON the same way setting overrides are."""
+    kind = command.get("type")
+    if kind in ("int", "bool"):
+        try:
+            number = int(round(float(value)))
+        except (TypeError, ValueError):
+            return value
+    elif kind == "float":
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return value
+    else:
+        return value
+    lo, hi = command.get("min"), command.get("max")
+    if lo is not None:
+        number = max(number, lo)
+    if hi is not None:
+        number = min(number, hi)
+    return number
+
+
 def recommend(
     db: Database, profile: HardwareProfile, target: Target,
     install_drive_media: str | None = None,
     overrides: dict[str, Any] | None = None,
+    cfg_overrides: dict[str, Any] | None = None,
 ) -> Recommendation:
     if target.preset not in PRESETS:
         raise ValueError(f"Unknown preset {target.preset!r}; expected one of {PRESETS}")
@@ -847,6 +899,38 @@ def recommend(
     )
     warnings.extend(cfg_warnings)
 
+    # User.cfg line overrides. These are policy switches (documented in
+    # cfg_commands.json as pros/cons, not a frame-time cost curve), so unlike
+    # setting overrides they never move the FPS prediction - only the settings
+    # database has a cost model. Said plainly to the user in the warning below
+    # rather than left implicit.
+    applied_cfg: dict[str, Any] = {}
+    if cfg_overrides:
+        for line in cfg_lines:
+            if line.key is None or line.key not in cfg_overrides:
+                continue
+            if line.key in LINKED_CFG_KEYS:
+                continue  # owned by the matching in-game setting instead
+            command = db.command(line.key)
+            if command is None or command.get("hardware_policy") == "never":
+                continue
+            wanted = _coerce_cfg_override(command, cfg_overrides[line.key])
+            if wanted == line.value:
+                continue
+            line.recommended_value = line.value
+            line.value = wanted
+            line.overridden = True
+            applied_cfg[line.key] = wanted
+
+    if applied_cfg:
+        warnings.append(Warning_(
+            "info", f"{len(applied_cfg)} User.cfg line(s) overridden by you",
+            "Written as you set them. Unlike the in-game settings, User.cfg commands here are "
+            "on/off policy calls rather than a modelled frame-time cost, so the predicted FPS "
+            "above does not move - use the in-game FPS overlay and frame time graph to see the "
+            "real effect. Reset from the User.cfg tab.",
+        ))
+
     if not gpu.get("matched", False):
         warnings.append(Warning_(
             "medium", "GPU not in the database",
@@ -892,6 +976,7 @@ def recommend(
         bottleneck=bottleneck, frame_cap=frame_cap,
         upscaler_mode=upscaler, upscaler_tech=_upscaler_tech(gpu), quality_step=step,
         settings=settings, cfg=cfg_lines, warnings=warnings, overrides=applied,
+        cfg_overrides=applied_cfg,
         tweaks=_evaluate_tweaks(db, profile, gpu, cpu, install_drive_media),
         headroom_note=headroom,
     )
