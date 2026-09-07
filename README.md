@@ -71,6 +71,11 @@ existing `User.cfg`, then shows every single change side by side with what it
 costs, what it buys and what the argument against it is. Nothing is applied
 before you have seen that list. See below.
 
+**Remembers more than one setup** — the 4 presets are a starting point; the
+sidebar's "Profiles" card lets you save the current preset, target and every
+override under a name ("Tournament", "Chill") and switch between as many as
+you want, not just tweak the same one slot.
+
 **Writes** — `User.cfg` into the game folder (with the right extension, which is
 the single most common reason these files "do nothing"), and optionally patches
 `PROFSAVE_profile`. Both are snapshotted together first, and one click puts
@@ -297,7 +302,7 @@ only thing that needs changing.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests -q          # 153 tests
+python -m pytest tests -q          # 158 tests
 PYTHONPATH=src python -m bf6tuner --preset competitive   # CLI, runs on Linux too
 ```
 

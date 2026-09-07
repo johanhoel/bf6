@@ -328,6 +328,44 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-07 (8) — Named custom profiles
+User picked this from a shortlist of feature options (also considered: CLI
+override parity, export/import overrides, quick-access folder buttons -
+none built yet, still open if wanted later).
+
+- A profile is a saved snapshot of everything the sidebar already
+  represents at once: preset, resolution/refresh/every checkbox, and both
+  override dicts. New `prefs.py` functions (`load_profiles`/`save_profiles`/
+  `save_profile`/`delete_profile`/`rename_profile`, `profiles.json`) mirror
+  the existing setting/cfg-override storage pattern exactly. **Zero engine
+  changes** - a profile is purely a UI-layer bundle of the same `Target`
+  fields and override dicts `recommend()` already accepts; `load_profiles()`
+  just replays them onto the sidebar widgets and the live override state.
+- New sidebar "Profiles" card (between "Your machine" and "Preset"): a combo
+  box plus Load/Save as.../Update/Delete buttons.
+- **Design iteration worth remembering**: the first cut auto-applied a
+  profile on `currentIndexChanged`. A smoke test caught a real bug this
+  causes: Qt only emits that signal when the index *changes*, so re-picking
+  a profile you'd already drifted away from (edited settings without
+  touching the combo) silently did nothing - exactly the moment you'd most
+  want a reload. Fixed by making Load an explicit button and dropping the
+  separate "currently loaded" tracking variable entirely - Load/Update/
+  Delete now all act on whatever `_selected_profile_name()` (the combo's own
+  current text) says, so "loaded" and "selected" can never drift apart from
+  each other by construction.
+- 5 new tests in `test_paths.py` (prefs.py's existing home) - round trip,
+  rename (including the no-op-if-missing case), delete-nonexistent is safe,
+  corrupt-file tolerance. 158 tests total.
+- Verified the full flow by hand, off-screen, end to end: save while esports
+  + HDR + a shadow_quality override, switch away to quality with no
+  overrides *without touching the combo*, confirm the combo still shows the
+  saved name, hit Load, confirm every field and both override stores came
+  back exactly (including the persisted-to-disk copies) - this is the
+  scenario that broke with auto-apply and is what proves the fix. Then
+  Update (adds a second override, confirmed saved) and Delete (confirmed
+  removed, buttons correctly disabled after).
+- Followed the standing build/release workflow.
+
 ### 2026-09-07 (7) — Row height, round 2: buttons were clipped, tightened further
 The previous fix (removing word-wrap + resizeRowsToContents) solved the
 giant-row bug but exposed a second one: at the new fixed row heights, the

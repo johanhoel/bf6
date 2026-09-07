@@ -166,3 +166,48 @@ def test_corrupt_prefs_file_is_ignored(tmp_path, monkeypatch):
     directory.mkdir()
     (directory / "paths.json").write_text("{ not json")
     assert prefs.load() == {}
+
+
+def test_profiles_round_trip(tmp_path, monkeypatch):
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    assert prefs.load_profiles() == {}
+
+    data = {"preset": "competitive", "width": 2560, "height": 1440,
+            "setting_overrides": {"shadow_quality": 3}, "cfg_overrides": {}}
+    prefs.save_profile("Tournament", data)
+    assert prefs.load_profiles() == {"Tournament": data}
+
+    prefs.save_profile("Chill", {"preset": "quality"})
+    assert set(prefs.load_profiles()) == {"Tournament", "Chill"}
+
+    prefs.delete_profile("Chill")
+    assert set(prefs.load_profiles()) == {"Tournament"}
+
+
+def test_rename_profile_preserves_data_and_drops_the_old_name(tmp_path, monkeypatch):
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    prefs.save_profile("Old name", {"preset": "esports"})
+    prefs.rename_profile("Old name", "New name")
+    profiles = prefs.load_profiles()
+    assert "Old name" not in profiles
+    assert profiles["New name"] == {"preset": "esports"}
+
+
+def test_rename_profile_is_a_no_op_for_a_name_that_does_not_exist(tmp_path, monkeypatch):
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    prefs.rename_profile("Nothing here", "Still nothing")
+    assert prefs.load_profiles() == {}
+
+
+def test_deleting_a_profile_that_does_not_exist_does_not_raise(tmp_path, monkeypatch):
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    prefs.delete_profile("Never saved")
+    assert prefs.load_profiles() == {}
+
+
+def test_corrupt_profiles_file_is_ignored(tmp_path, monkeypatch):
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    directory = tmp_path / "BF6Tuner"
+    directory.mkdir()
+    (directory / "profiles.json").write_text("{ not json")
+    assert prefs.load_profiles() == {}

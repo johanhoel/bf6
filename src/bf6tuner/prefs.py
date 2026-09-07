@@ -15,6 +15,7 @@ from typing import Any
 PATHS_FILE = "paths.json"
 OVERRIDES_FILE = "setting_overrides.json"
 CFG_OVERRIDES_FILE = "cfg_overrides.json"
+PROFILES_FILE = "profiles.json"
 
 
 def config_dir() -> Path:
@@ -102,3 +103,41 @@ def set_cfg_override(key: str, value: Any | None) -> dict[str, Any]:
 
 def clear_cfg_overrides() -> None:
     save_cfg_overrides({})
+
+
+# -- named profiles -----------------------------------------------------------
+# A profile is a saved snapshot of everything the sidebar + tables represent
+# at once (preset, resolution/refresh/toggles, and every override) under a
+# name, so switching between e.g. "Tournament" and "Chill" is one click
+# instead of re-entering a dozen values. The live state (setting/cfg
+# overrides above) is the single source of truth for what's actually
+# applied; a profile is just a bookmark you can save from it or load into it.
+
+def load_profiles() -> dict[str, Any]:
+    return _read(PROFILES_FILE)
+
+
+def save_profiles(values: dict[str, Any]) -> None:
+    _write(PROFILES_FILE, values)
+
+
+def save_profile(name: str, data: dict[str, Any]) -> dict[str, Any]:
+    values = load_profiles()
+    values[name] = data
+    save_profiles(values)
+    return values
+
+
+def delete_profile(name: str) -> dict[str, Any]:
+    values = load_profiles()
+    values.pop(name, None)
+    save_profiles(values)
+    return values
+
+
+def rename_profile(old: str, new: str) -> dict[str, Any]:
+    values = load_profiles()
+    if old in values and old != new and new:
+        values[new] = values.pop(old)
+        save_profiles(values)
+    return values
