@@ -74,3 +74,40 @@ def test_local_commit_never_raises():
     # Whatever it returns (a real sha in this checkout, or "" off-git), it must
     # not raise - the same never-crash guarantee as hardware.detect().
     assert isinstance(update.local_commit(), str)
+
+
+def _http_error(code: int = 403, msg: str = "forbidden", remaining: str | None = None,
+                reset: str | None = None) -> "urllib.error.HTTPError":
+    import io
+    import urllib.error
+
+    headers: dict[str, str] = {}
+    if remaining is not None:
+        headers["X-RateLimit-Remaining"] = remaining
+    if reset is not None:
+        headers["X-RateLimit-Reset"] = reset
+    return urllib.error.HTTPError(
+        url="https://api.github.com/repos/johanhoel/bf6/actions/runs",
+        code=code, msg=msg, hdrs=headers, fp=io.BytesIO(b""),
+    )
+
+
+def test_friendly_error_recognises_the_shared_rate_limit():
+    message = update._friendly_error(
+        _http_error(msg="rate limit exceeded", remaining="0", reset="1893456000")
+    )
+    assert "rate limit" in message.lower()
+    assert "clears on its own" in message
+
+
+def test_friendly_error_falls_back_to_str_for_other_failures():
+    message = update._friendly_error(ValueError("boom"))
+    assert message == "boom"
+
+
+def test_friendly_error_ignores_a_403_that_is_not_the_rate_limit():
+    """A 403 with quota left, or no rate-limit headers at all, is some other
+    permissions problem - don't claim it's the rate limit."""
+    message = update._friendly_error(_http_error(msg="access denied", remaining="12"))
+    assert "rate limit" not in message.lower()
+    assert "access denied" in message.lower()
