@@ -632,13 +632,13 @@ class MainWindow(QMainWindow):
         self.settings_table = self._make_table(
             ["Setting", "Value", "", "Why"], [250, 200, 155, -1]
         )
-        self.settings_table.verticalHeader().setDefaultSectionSize(26)
+        self.settings_table.verticalHeader().setDefaultSectionSize(30)
         self.tabs.addTab(self._build_settings_tab(), "In-game settings")
 
         self.cfg_table = self._make_table(
             ["Command", "Value", "", "Why"], [260, 160, 155, -1]
         )
-        self.cfg_table.verticalHeader().setDefaultSectionSize(25)
+        self.cfg_table.verticalHeader().setDefaultSectionSize(29)
         self.tabs.addTab(self._build_cfg_tab(), "User.cfg")
 
         self.warnings_area = self._make_scroll()
@@ -1018,7 +1018,7 @@ class MainWindow(QMainWindow):
         item.setBackground(QColor(theme.BG_RAISED))
         table.setItem(row, 0, item)
         table.setSpan(row, 0, 1, span)
-        table.setRowHeight(row, 26)
+        table.setRowHeight(row, 29)
 
     # -- category collapse / search (in-game settings) ----------------------
 

@@ -328,6 +328,31 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-07 (9) — Row height, round 3: 26px was too tight for combo/spin chrome
+User flagged (screenshot, "check the column in red") that the Value
+column's combo/spin editors looked cramped/hard to read at the 26px
+(settings) / 25px (cfg) rows from round 2's "match the font" pass.
+
+- Measured precisely rather than guessing: a settings-table QComboBox's
+  `sizeHint().height()` was 22px, a spinbox 23px - both technically fit
+  under 26px. The takeaway: Qt's *reported* size hint fitting is not the
+  same as *comfortable* rendering - combo/spin box chrome (the dropdown
+  arrow, spinner buttons) generally wants more like 28-30px before it
+  stops looking squeezed, independent of whether the text itself fits.
+  Tried to get a visual screenshot via `widget.grab()` under
+  `QT_QPA_PLATFORM=offscreen` first to check directly rather than guess
+  again - the offscreen platform doesn't load real fonts or apply the
+  stylesheet, so it renders as unstyled tofu boxes and was useless for
+  this. Worth remembering: **offscreen Qt smoke tests are for behavior/
+  wiring checks, not visual verification** - there is no way to actually
+  see rendering output from this environment.
+- Settled on 30px (settings) / 29px (cfg) / 29px (category headers) - still
+  far more compact than the original 34/32/48/44, but with 6-10px of
+  genuine margin over every measured widget's size hint (combobox 22,
+  spinbox 23, TableButton 20) instead of a hairline fit.
+- 158 tests unchanged (UI-only). Followed the standing build/release
+  workflow.
+
 ### 2026-09-07 (8) — Named custom profiles
 User picked this from a shortlist of feature options (also considered: CLI
 override parity, export/import overrides, quick-access folder buttons -
