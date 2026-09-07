@@ -48,6 +48,12 @@ FRAME_TIME_COLUMNS = ("msbetweenpresents", "msbetweendisplaychange", "frametime"
 
 PRESENTMON_CANDIDATE_NAMES = ("presentmon.exe", "presentmon64.exe")
 
+# CreateProcess's ERROR_ELEVATION_REQUIRED. Seen in practice (2026-09-07) when
+# pointed at the installed Intel PresentMon *application* (its exe is
+# manifested requireAdministrator, since it manages the background service)
+# instead of the standalone console tool, which isn't. See run_capture().
+_ERROR_ELEVATION_REQUIRED = 740
+
 # {process}, {output}, {duration} are substituted by build_args(). Editable
 # from the UI's Advanced field if a given PresentMon build wants different
 # flags - not hardcoded past this one place. Flags verified against
@@ -115,6 +121,15 @@ def run_capture(exe: Path, process_name: str, output_csv: Path, duration_s: int,
             "flags for this version - check the Advanced command template."
         ) from exc
     except OSError as exc:
+        if getattr(exc, "winerror", None) == _ERROR_ELEVATION_REQUIRED:
+            raise BenchmarkError(
+                f"{exe} requires administrator privileges to run (Windows error 740). "
+                "This usually means you've pointed BF6 Tuner at the installed Intel "
+                "PresentMon application (under Program Files) rather than the standalone "
+                "console tool. Download the single PresentMon-<version>-x64.exe from "
+                "github.com/GameTechDev/PresentMon/releases instead - that one does not "
+                "need elevation - and Locate that file instead."
+            ) from exc
         raise BenchmarkError(f"Could not run PresentMon at {exe}: {exc}") from exc
 
     if result.returncode != 0:
