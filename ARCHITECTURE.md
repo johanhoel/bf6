@@ -338,6 +338,32 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-07 (16) — Diagnosing blind: make targeting mode visible up front
+User tried the PID-targeting build (elevated BF6 Tuner, as before) and got
+the *identical* error message. Rather than guess again whether PID
+targeting actually engaged, made the app show which mode it's using
+immediately, not just inferable from an eventual error 60 seconds later:
+
+- Status bar now says `"Recording for {duration}s (PID {pid})"` or
+  `"... (process name '{name}' - no PID found)"` the moment recording
+  starts - visible well before any result comes back.
+- `run_capture`'s error messages all state which targeting mode was used
+  (`target_desc`), and the elevation-denied message is now two different
+  texts depending on whether a PID was already in use: if PID targeting
+  *still* gets access-denied, the message says so plainly ("this isn't
+  just a name-resolution requirement") instead of repeating the by-name
+  explanation verbatim, which would actively mislead if that's not what
+  actually happened.
+- 3 new tests (195 total): the PID-still-denied message text, and that
+  both non-elevation error paths correctly state "PID {n}" vs "no PID was
+  found" depending on which was used.
+- This is a diagnostic-visibility change, not a claimed fix - still
+  waiting on the user's next attempt to find out whether `find_running_game_pid()`
+  is actually finding a PID at all (most likely culprit if the same exact
+  message reappeared) or whether PID targeting also hits the elevation
+  wall, which would be a materially different and more surprising finding.
+- Followed the standing build/release workflow.
+
 ### 2026-09-07 (15) — PID targeting, since admin-elevating the parent didn't help
 User tried the previous entry's fix (ran BF6 Tuner itself as Administrator)
 and it made **no difference** - same "access denied" from PresentMon. That

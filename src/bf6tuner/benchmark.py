@@ -154,17 +154,32 @@ def run_capture(exe: Path, process_name: str, output_csv: Path, duration_s: int,
             ) from exc
         raise BenchmarkError(f"Could not run PresentMon at {exe}: {exc}") from exc
 
+    target_desc = f"PID {pid}" if pid else f"process name '{process_name}' (no PID was found)"
+
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or "no output").strip()[-1500:]
         if "access denied" in detail.lower() or "elevat" in detail.lower():
+            if pid:
+                # Targeted by PID and *still* elevation-denied: the "needs
+                # elevation to resolve a name" theory is wrong, or incomplete -
+                # say so plainly rather than repeat the by-name explanation.
+                raise BenchmarkError(
+                    f"PresentMon still needs administrator rights even targeting {target_desc} "
+                    "directly, not by name - so this isn't just a name-resolution requirement. "
+                    "Close BF6 Tuner and relaunch it as Administrator, then try again. If that "
+                    "still fails, this may need elevation on the game's own process too, or a "
+                    "Windows account in the 'Performance Log Users' group rather than plain "
+                    f"Administrator.\n\nPresentMon's message:\n{detail}"
+                )
             raise BenchmarkError(
-                "PresentMon needs administrator rights to trace another process by name "
-                "(its own requirement - even the standalone console tool needs this, not "
-                "just the installed app). Close BF6 Tuner and relaunch it as Administrator "
+                f"PresentMon needs administrator rights to trace another process by name "
+                f"(targeted {target_desc}). Close BF6 Tuner and relaunch it as Administrator "
                 "(right-click -> Run as administrator), then try recording again - nothing "
                 f"else in the app needs elevation, only this.\n\nPresentMon's message:\n{detail}"
             )
-        raise BenchmarkError(f"PresentMon exited with code {result.returncode}:\n{detail}")
+        raise BenchmarkError(
+            f"PresentMon (targeted {target_desc}) exited with code {result.returncode}:\n{detail}"
+        )
     if not output_csv.is_file():
         raise BenchmarkError(
             "PresentMon reported success but did not write a CSV file. "
