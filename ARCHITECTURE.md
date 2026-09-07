@@ -338,6 +338,36 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-07 (11) — Verified PresentMon's actual current flags; fixed the guess
+User asked how to install PresentMon. Rather than answer from possibly-stale
+knowledge, fetched the actual current repo (`README-ConsoleApplication.md`
+via WebFetch) - and the previous entry's default flags were wrong.
+
+- Confirmed: current Intel PresentMon (2.x) ships three components (service,
+  GUI, and a **standalone console application** - a single self-contained
+  `PresentMon-<version>-x64.exe`, no service required, matching this
+  module's subprocess design). The console app's real flags are
+  double-dash: `--process_name`, `--output_file`, `--timed`,
+  `--stop_existing_session`, `--no_console_stats`. The previous commit's
+  `DEFAULT_ARGS_TEMPLATE` used single-dash 1.x-style flags
+  (`-session_name`, `-no_top`, `-terminate_after_timed`) that don't exist
+  in the current version - would have failed on first real use.
+  `MsBetweenPresents` (the frame-time column `_find_column` already
+  prioritised) is confirmed present in 2.x's CSV output, so `parse_csv`
+  needed no change.
+- Updated `DEFAULT_ARGS_TEMPLATE` to the verified flags and the module
+  docstring to record what's now confirmed vs. still assumed.
+- 183 tests still pass unchanged - they check argument *substitution*
+  (values present in the built arg list), not the literal flag spelling,
+  so they didn't need updating, but also couldn't have caught this bug
+  themselves. **Worth remembering**: this class of bug - correct code
+  shape, wrong external-tool CLI syntax - is exactly what unit tests
+  against mocked subprocess calls cannot catch; only checking the real
+  tool's own docs (or a live capture) can. If a user reports a benchmark
+  capture failing with an "unrecognized argument"-shaped PresentMon stderr,
+  the fix is almost certainly here, not in the parsing logic.
+- Followed the standing build/release workflow.
+
 ### 2026-09-07 (10) — Real performance logging via PresentMon
 User asked for auto-logged performance testing to check the FPS prediction
 against reality - scoped via AskUserQuestion to "full in-app recording"
