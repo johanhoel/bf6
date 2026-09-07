@@ -201,6 +201,8 @@ class MainWindow(QMainWindow):
         menubar = self.menuBar()
 
         file_menu = menubar.addMenu("&File")
+        self._add_action(file_menu, "Save &profile as...", "Ctrl+Shift+S", self.save_profile_as)
+        file_menu.addSeparator()
         self._add_action(file_menu, "&Locate files...", "Ctrl+L", self.locate_files)
         self._add_action(file_menu, "Bac&k up now", "Ctrl+B", self.backup_now)
         self._add_action(file_menu, "&Restore...", "Ctrl+Shift+R", self.open_restore)
@@ -318,6 +320,169 @@ class MainWindow(QMainWindow):
         row.addWidget(self.redetect_button)
         return frame
 
+    def _build_profiles_card(self) -> QFrame:
+        profiles_card, profiles_layout = card("Profiles")
+        self.profile_combo = _NoScrollComboBox()
+        # Loading is an explicit button, not automatic on selection: Qt only
+        # emits currentIndexChanged when the index actually changes, so
+        # auto-apply-on-select would silently do nothing if you re-picked the
+        # profile you'd already drifted away from - the one time you'd most
+        # want it to reload. An explicit action also matches how "Update"
+        # and "Delete" already work here, and how the rest of the app never
+        # changes anything without a deliberate click.
+        self.profile_combo.currentIndexChanged.connect(self._on_profile_combo_changed)
+        profiles_layout.addWidget(self.profile_combo)
+
+        row = QHBoxLayout()
+        row.setSpacing(6)
+        self.load_profile_button = QPushButton("Load")
+        self.load_profile_button.setEnabled(False)
+        self.load_profile_button.clicked.connect(self.load_selected_profile)
+        row.addWidget(self.load_profile_button)
+
+        save_as_button = QPushButton("Save as...")
+        save_as_button.clicked.connect(self.save_profile_as)
+        row.addWidget(save_as_button)
+
+        self.update_profile_button = QPushButton("Update")
+        self.update_profile_button.setEnabled(False)
+        self.update_profile_button.clicked.connect(self.update_current_profile)
+        row.addWidget(self.update_profile_button)
+
+        self.delete_profile_button = QPushButton("Delete")
+        self.delete_profile_button.setEnabled(False)
+        self.delete_profile_button.clicked.connect(self.delete_current_profile)
+        row.addWidget(self.delete_profile_button)
+        profiles_layout.addLayout(row)
+
+        profiles_layout.addWidget(dim(
+            "Bundles the preset, target and every override into one saved, "
+            "switchable slot - beyond the 4 built-in presets. Pick one and "
+            "press Load."
+        ))
+
+        self._reload_profile_combo()
+        return profiles_card
+
+    # -- named profiles -------------------------------------------------------
+    # Deliberately no separate "currently loaded profile" state: Load/Update/
+    # Delete all act on whatever the combo box currently shows, full stop.
+    # That is easier to predict than tracking "loaded" separately from
+    # "selected" - the two could otherwise silently drift apart.
+
+    def _reload_profile_combo(self, select: str | None = None) -> None:
+        self.profile_combo.blockSignals(True)
+        self.profile_combo.clear()
+        self.profile_combo.addItem("— none selected —")
+        for name in sorted(prefs.load_profiles()):
+            self.profile_combo.addItem(name)
+        index = self.profile_combo.findText(select or "")
+        self.profile_combo.setCurrentIndex(index if index >= 0 else 0)
+        self.profile_combo.blockSignals(False)
+        self._on_profile_combo_changed(self.profile_combo.currentIndex())
+
+    def _selected_profile_name(self) -> str | None:
+        index = self.profile_combo.currentIndex()
+        return self.profile_combo.itemText(index) if index > 0 else None
+
+    def _on_profile_combo_changed(self, index: int) -> None:
+        has_selection = index > 0
+        self.load_profile_button.setEnabled(has_selection)
+        self.update_profile_button.setEnabled(has_selection)
+        self.delete_profile_button.setEnabled(has_selection)
+
+    def _collect_profile_data(self) -> dict:
+        label = self.resolution_box.currentText()
+        width, height = (int(part) for part in label.split("x", 1))
+        data: dict = {
+            "preset": PRESETS[self.preset_group.checkedId()],
+            "width": width, "height": height,
+            "refresh_hz": self.refresh_box.value(),
+        }
+        for key, box in self.checkboxes.items():
+            data[key] = box.isChecked()
+        data["setting_overrides"] = dict(self.setting_overrides)
+        data["cfg_overrides"] = dict(self.cfg_overrides)
+        return data
+
+    def load_selected_profile(self) -> None:
+        name = self._selected_profile_name()
+        data = prefs.load_profiles().get(name) if name else None
+        if name is None or data is None:
+            return
+
+        self._loading = True
+        try:
+            preset = data.get("preset")
+            preset_index = PRESETS.index(preset) if preset in PRESETS else 1
+            self.preset_group.button(preset_index).setChecked(True)
+            self.preset_blurb.setText(PRESET_BLURB[PRESETS[preset_index]])
+
+            label = f"{data.get('width', 2560)}x{data.get('height', 1440)}"
+            index = self.resolution_box.findText(label)
+            if index < 0:
+                self.resolution_box.addItem(label)
+                index = self.resolution_box.count() - 1
+            self.resolution_box.setCurrentIndex(index)
+            self.refresh_box.setValue(int(data.get("refresh_hz", 144)))
+
+            for key, box in self.checkboxes.items():
+                if key in data:
+                    box.setChecked(bool(data[key]))
+
+            self.setting_overrides = dict(data.get("setting_overrides", {}))
+            self.cfg_overrides = dict(data.get("cfg_overrides", {}))
+            prefs.save_setting_overrides(self.setting_overrides)
+            prefs.save_cfg_overrides(self.cfg_overrides)
+        finally:
+            self._loading = False
+
+        self.statusBar().showMessage(f'Loaded profile "{name}".')
+        self.refresh()
+
+    def save_profile_as(self) -> None:
+        from PySide6.QtWidgets import QInputDialog
+
+        name, ok = QInputDialog.getText(
+            self, "Save profile", "Name this profile:",
+            text=self._selected_profile_name() or "",
+        )
+        name = name.strip()
+        if not ok or not name:
+            return
+        if name in prefs.load_profiles():
+            confirm = QMessageBox.question(
+                self, "Overwrite profile",
+                f'A profile named "{name}" already exists. Overwrite it?',
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+            )
+            if confirm != QMessageBox.Yes:
+                return
+        prefs.save_profile(name, self._collect_profile_data())
+        self._reload_profile_combo(select=name)
+        self.statusBar().showMessage(f'Saved profile "{name}".')
+
+    def update_current_profile(self) -> None:
+        name = self._selected_profile_name()
+        if name is None:
+            return
+        prefs.save_profile(name, self._collect_profile_data())
+        self.statusBar().showMessage(f'Updated profile "{name}".')
+
+    def delete_current_profile(self) -> None:
+        name = self._selected_profile_name()
+        if name is None:
+            return
+        confirm = QMessageBox.question(
+            self, "Delete profile", f'Delete the profile "{name}"?',
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+        prefs.delete_profile(name)
+        self._reload_profile_combo()
+        self.statusBar().showMessage(f'Deleted profile "{name}".')
+
     def _build_sidebar(self) -> QWidget:
         panel = QWidget()
         layout = QVBoxLayout(panel)
@@ -344,6 +509,8 @@ class MainWindow(QMainWindow):
         self.hw_note.setVisible(False)
         hw_layout.addWidget(self.hw_note)
         layout.addWidget(hw_card)
+
+        layout.addWidget(self._build_profiles_card())
 
         preset_card, preset_layout = card("Preset")
         self.preset_group = QButtonGroup(self)
