@@ -44,13 +44,13 @@ QLabel#Hero {{ font-size: 34px; font-weight: 700; }}
 QLabel#HeroUnit {{ color: {TEXT_DIM}; font-size: 12px; }}
 QLabel#Dim {{ color: {TEXT_DIM}; }}
 QLabel#Mono {{ font-family: {MONO}; color: {TEXT_DIM}; font-size: 12px; }}
-QLabel#Title {{ font-size: 18px; font-weight: 700; }}
+QLabel#Title {{ font-size: 19px; font-weight: 700; letter-spacing: 0.2px; }}
 
 QPushButton {{
     background-color: {BG_SUNKEN};
     border: 1px solid {BORDER};
     border-radius: 6px;
-    padding: 7px 14px;
+    padding: 8px 15px;
     color: {TEXT};
 }}
 QPushButton:hover {{ border-color: {ACCENT_DIM}; }}
@@ -135,6 +135,11 @@ QScrollBar::handle:vertical:hover {{ background: #3c4454; }}
 QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; width: 0; }}
 QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px; }}
 QScrollBar::handle:horizontal {{ background: #2f3542; border-radius: 5px; min-width: 30px; }}
+
+QProgressBar {{
+    background-color: {BG_SUNKEN}; border: 1px solid {BORDER}; border-radius: 3px;
+}}
+QProgressBar::chunk {{ background-color: {ACCENT}; border-radius: 3px; }}
 
 QStatusBar {{ background: {BG_SUNKEN}; color: {TEXT_DIM}; border-top: 1px solid {BORDER}; }}
 QToolTip {{

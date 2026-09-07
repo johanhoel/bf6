@@ -69,6 +69,11 @@ database.load()  ───┘         (matching,            │            └�
 - **`prefs.py`** — persisted user preferences: manual path overrides,
   per-setting overrides, and per-cfg-line overrides, all in
   `%APPDATA%\BF6Tuner\`.
+- **`icon.py`** — the app's reticle icon, drawn pixel-by-pixel in pure Python
+  (no image library). Shared by `packaging/make_icon.py` (writes the .ico
+  baked into the .exe) and `ui/app.py`'s `app_icon()` (renders the same
+  artwork at runtime for the window/taskbar icon, so a source checkout looks
+  the same as the shipped build).
 - **`update.py`** / **`_build_info.py`** — checks the GitHub API for whether
   `main` has moved on since the commit this build was made from; never raises,
   never auto-downloads. `_build_info.py` is build-generated (gitignored, same
@@ -211,6 +216,18 @@ undefined behavior — don't copy a `.db` next to a source checkout.
   and again on demand via "Check for updates"; `UpdateDialog`
   (`ui/update_dialog.py`) renders the changelog and links out to GitHub -
   there is no in-app download.
+- **Visual polish pass** (2026-09-07): action-bar and header buttons carry
+  `QStyle` standard icons (no asset files - `self.style().standardIcon(...)`,
+  themed by Qt's active style); the window/taskbar icon comes from
+  `app_icon()` (see `icon.py` above); a single reference-counted
+  `busy_indicator` (`_busy_start`/`_busy_stop`) covers both the startup
+  hardware-detect and update-check workers, since they run concurrently and
+  either one finishing must not hide the indicator while the other is still
+  running; hardware labels get an italic/dimmed "detecting..." state while
+  `DetectWorker` runs; a genuinely clean warnings/checks tab renders "✓ ALL
+  CLEAR" instead of a neutral "INFO" badge; and both searchable tables show
+  an explicit "No matches for ‹query›" hint (`_show_no_matches_hint`,
+  repurposing the existing note label) instead of silently going blank.
 - Everything recomputes through one path: `refresh()` → `engine.recommend()`
   → `compare.from_paths()` → `_render()`, which pushes into every widget.
   `self._loading` guards against `refresh()` cascading from signal handlers
@@ -310,6 +327,65 @@ tests as of the last README update).
 
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
+
+### 2026-09-07 (5) — Visual polish pass
+Follow-up to the earlier "make the UI much better" request - that session
+covered navigation/findability; this one covers the deprioritised half
+(icons, spacing/typography, empty/loading states, more deliberate color use).
+
+- **Icons**: relocated the pure-Python reticle-icon renderer from
+  `packaging/make_icon.py` into `src/bf6tuner/icon.py` (`render_png(size)`,
+  `build_ico(destination)`), with `make_icon.py` now a ~20-line wrapper so
+  `python packaging/make_icon.py` and `build.py`'s import keep working
+  unchanged. New `ui/app.py::app_icon()` renders 3 sizes (256/64/32 - the
+  other three in `icon.SIZES` are for the .ico only, not worth the extra
+  render cost for a QIcon Qt will scale anyway) and is set as both the
+  `QApplication` and `MainWindow` icon, so a source checkout's taskbar entry
+  matches the shipped .exe instead of showing a generic Python icon.
+  Measured construction overhead: negligible in practice (see verification
+  below). Action-bar and header buttons got `QStyle` standard icons
+  (`SP_DirOpenIcon`, `SP_DriveHDIcon`, `SP_DialogResetButton`,
+  `SP_DialogSaveButton` ×2, `SP_DialogApplyButton`, `SP_BrowserReload`,
+  `SP_ArrowUp`) - zero asset files, themed automatically by Qt's active
+  style.
+- **Loading state**: a single `busy_indicator` (indeterminate `QProgressBar`
+  in the header) is reference-counted (`_busy_start`/`_busy_stop`,
+  `self._busy_count`) rather than a plain show/hide flag, because
+  `MainWindow.__init__` kicks off `DetectWorker` *and* `UpdateCheckWorker`
+  concurrently at startup - a naive show/hide would have whichever job
+  finishes first hide the indicator while the other is still running. Also:
+  hardware sidebar labels switch to italic/dimmed "detecting cpu..." etc.
+  text while `DetectWorker` runs, reverting on completion.
+- **Empty states**: the warnings/checks tabs' synthetic "nothing to
+  flag/check" entries now use a new `"ok"` severity that renders as
+  "✓ ALL CLEAR" in green rather than a neutral "INFO" badge (`_fill_scroll`).
+  Both searchable tables (settings, User.cfg) now show "No matches for
+  ‹query›. Clear the search to see everything." in the existing note label
+  when a filter matches zero rows, instead of just going blank
+  (`_show_no_matches_hint`, shared by `_apply_settings_filter`/
+  `_apply_cfg_filter`; the note's default text is now saved as
+  `_settings_note_default`/`_cfg_note_default` to restore afterward).
+- **Spacing/typography**: `card()`'s margins/spacing bumped slightly
+  (16/14/16/16→18/16/18/18, spacing 9→10); `QLabel#Title` 18px→19px with a
+  touch of letter-spacing; `QPushButton` padding 7px 14px→8px 15px; new
+  `QProgressBar`/`QProgressBar::chunk` rules (previously unstyled, would have
+  used the raw OS widget against the dark theme).
+- 4 new tests (`test_icon.py`, 153 total) parsing the PNG/ICO byte structure
+  directly (no image library, matching the module's own policy) rather than
+  just trusting it doesn't crash.
+- Verified by hand, off-screen: every button's `.icon()` is non-null; window
+  icon non-null; `MainWindow` construction including icon rendering measured
+  at ~0.13s (negligible); no-match search hint text appears and clears
+  correctly on both tables; the busy-indicator ref-counting - **caught a
+  test-harness false alarm here**: a plain script driving `MainWindow`
+  without calling `app.exec()` never lets queued cross-thread signals
+  (`DetectWorker`/`UpdateCheckWorker` finishing) actually invoke their slots,
+  so `_busy_count` looked stuck. Confirmed it was the test, not the app, by
+  pumping `app.processEvents()` in a loop until the startup workers settled,
+  then re-running the start/stop sequence in isolation - correct in both the
+  pumped-manually and the real `app.exec()` case. Worth remembering next
+  time an offscreen smoke test involving `QThread` signals looks wrong.
+- Followed the standing build/release workflow; bumped `__version__`.
 
 ### 2026-09-07 (4) — Friendlier message for the shared GitHub rate limit
 The user hit "HTTP Error 403: rate limit exceeded" clicking **Check for
