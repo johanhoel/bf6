@@ -338,6 +338,39 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-07 (12) — First real-world benchmark error: elevation required
+User's first actual capture attempt (against a real PresentMon install)
+failed with `WinError 740: The requested operation requires elevation`.
+Root cause: they'd pointed "Locate PresentMon..." at
+`C:\Program Files\Intel\PresentMon\PresentMonApplication\PresentMon.exe` -
+the **installed GUI application**, whose exe is manifested
+`requireAdministrator` (it manages the privileged background service) -
+rather than the standalone console tool from the Releases page assets,
+which doesn't need elevation.
+
+- `run_capture` now catches this specific `OSError` (`.winerror == 740`,
+  `_ERROR_ELEVATION_REQUIRED`) and explains exactly what's likely wrong and
+  the fix, instead of the previous generic "Could not run PresentMon at
+  {path}: {exc}" message that gave no hint what to do about it.
+- Chose not to add UAC-elevation support (`ShellExecute` "runas") as an
+  alternative fix: capturing stdout/stderr from an elevated child process
+  requires real extra plumbing (named pipes or similar - `subprocess.run`'s
+  simple output capture doesn't work across an elevation boundary), a UAC
+  prompt would appear on every single recording, and the actual fix (use
+  the right executable) is simple and already what the docs recommend -
+  not worth the complexity for a problem with an easy correct answer.
+- **Test-writing note worth remembering**: the first version of the new
+  test used `OSError(740, "message")` (2-arg form) and would have passed
+  even if the elevation-detection code were broken, because that
+  constructor form does **not** set `.winerror` - only the 4-arg Windows
+  form does (`OSError(errno, strerror, filename, winerror)`), confirmed by
+  direct experiment before trusting the test. A test that passes for the
+  wrong reason is worse than no test.
+- 2 new tests (185 total): the elevation case matches the real constructor
+  shape verified above, plus a control test confirming an unrelated
+  `OSError` still gets the plain fallback message, not the elevation one.
+- Followed the standing build/release workflow.
+
 ### 2026-09-07 (11) — Verified PresentMon's actual current flags; fixed the guess
 User asked how to install PresentMon. Rather than answer from possibly-stale
 knowledge, fetched the actual current repo (`README-ConsoleApplication.md`

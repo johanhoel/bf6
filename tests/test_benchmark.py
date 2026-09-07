@@ -132,6 +132,29 @@ def test_run_capture_raises_if_no_csv_was_produced(tmp_path, monkeypatch):
         benchmark.run_capture(tmp_path / "PresentMon.exe", "bf6.exe", tmp_path / "out.csv", 5)
 
 
+def test_run_capture_explains_the_elevation_required_error(tmp_path, monkeypatch):
+    """Seen in practice: pointed at the installed Intel PresentMon app (which
+    requires admin) instead of the standalone console tool (which doesn't).
+    OSError needs the 4-arg Windows form for .winerror to actually be set -
+    a plain OSError(740, "msg") leaves .winerror as None, which would have
+    made this test pass for the wrong reason if written that way."""
+    def fake_run(*a, **k):
+        raise OSError(22, "The requested operation requires elevation", None, 740)
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(benchmark.BenchmarkError, match="standalone console tool"):
+        benchmark.run_capture(
+            tmp_path / "PresentMonApplication" / "PresentMon.exe", "bf6.exe", tmp_path / "out.csv", 5
+        )
+
+
+def test_run_capture_reports_other_oserrors_plainly(tmp_path, monkeypatch):
+    def fake_run(*a, **k):
+        raise OSError(2, "The system cannot find the file specified", None, 2)
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(benchmark.BenchmarkError, match="cannot find the file"):
+        benchmark.run_capture(tmp_path / "missing.exe", "bf6.exe", tmp_path / "out.csv", 5)
+
+
 def test_run_capture_raises_a_clear_error_on_timeout(tmp_path, monkeypatch):
     def fake_run(*a, **k):
         raise subprocess.TimeoutExpired(cmd="PresentMon", timeout=35)
