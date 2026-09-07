@@ -61,6 +61,11 @@ so the file and the prediction can never disagree about it. Overrides of either
 kind persist across restarts and preset changes, are marked in their table, and
 reset individually or all at once.
 
+Both tables group their rows by category (Video &gt; Basic/Advanced/Ray Tracing,
+Controls, Audio for settings; CPU Threading, Render Pipeline, Frame Pacing and so
+on for `User.cfg`), with a search box, a jump-to-category dropdown, and
+expand/collapse-all — the settings list alone is 39 rows and only getting longer.
+
 **Compares** — reads your *current* settings out of `PROFSAVE_profile` and your
 existing `User.cfg`, then shows every single change side by side with what it
 costs, what it buys and what the argument against it is. Nothing is applied
@@ -265,7 +270,7 @@ Five JSON datasets under `data/`, encrypted into one bundle at build time:
 | `gpu_db.json` | 78 GPUs — VRAM, relative BF6 performance index, DLSS/FSR/XeSS support, frame-generation capability, ray tracing strength |
 | `cpu_db.json` | 60 CPUs — core/thread counts, hybrid topology, X3D and chiplet layout, estimated CPU-limited FPS, plus a fallback heuristic for anything not listed |
 | `cfg_commands.json` | 39 `User.cfg` commands, each with a **confidence level** (`documented` / `community` / `legacy`), a **risk level**, a hardware policy, an explanation, and pros/cons for the 19 that are actually emitted |
-| `ingame_settings.json` | 32 in-game settings with per-preset values, VRAM gates, a per-option **cost curve** in percent of frame time, and **directional pros and cons** for raising or lowering each one |
+| `ingame_settings.json` | 39 in-game settings with per-preset values, VRAM gates, a per-option **cost curve** in percent of frame time, and **directional pros and cons** for raising or lowering each one. 4 are marked `confidence: unverified` — plausible additions (sharpening, view/LOD distance, reflection quality, weapon FOV) not yet confirmed against a real BF6 profile, so they carry no profile key and are never written automatically |
 | `system_tweaks.json` | 14 OS/BIOS/driver checks with trigger conditions |
 
 Commands are marked `legacy` when they are real Frostbite console variables from
@@ -292,7 +297,7 @@ only thing that needs changing.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests -q          # 132 tests
+python -m pytest tests -q          # 146 tests
 PYTHONPATH=src python -m bf6tuner --preset competitive   # CLI, runs on Linux too
 ```
 

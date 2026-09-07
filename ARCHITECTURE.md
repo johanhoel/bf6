@@ -152,7 +152,7 @@ via `Database` (`database.py`):
 | `gpu_db.json` | `aliases` (name-normalisation substitutions) + `gpus: [{id, name, vendor, arch, vram, score, dlss, fsr, xess, frame_gen, reflex, rt}]`. `score` normalised so RTX 4080 SUPER @ 1440p High = 100. | `engine.match_gpu` |
 | `cpu_db.json` | `heuristic` (fallback scoring constants + generation-inference tables) + `cpus: [{id, vendor, cores, threads, score, hybrid, x3d, ccds, gen}]`. `score` = estimated 64p Conquest FPS ceiling. | `engine.match_cpu`, `_cpu_heuristic` |
 | `cfg_commands.json` | `confidence_levels`/`risk_levels` glossaries + `groups` + `commands: [...]` (per-key `summary`, `pros`/`cons`, `risk`, `confidence`, `hardware_policy`). | `engine._build_cfg` via `Database.command()` |
-| `ingame_settings.json` | `profsave` docs + `presets` (esports/competitive/balanced/quality) + `settings: [{id, label, menu, type, options, cost, impact, tradeoff, note, profsave_key, profsave_scale, never_write}]`. Largest file (~54KB). | `engine.recommend`, `costs.cost_for`, `ui/app.py` detail pane |
+| `ingame_settings.json` | `profsave` docs + `presets` (esports/competitive/balanced/quality) + `settings: [{id, label, menu, type, options, cost, impact, tradeoff, note, profsave_key, profsave_scale, never_write, confidence}]`. Largest file (~54KB). | `engine.recommend`, `costs.cost_for`, `ui/app.py` detail pane |
 | `system_tweaks.json` | `tweaks: [{id, label, scope, trigger, severity, why, how, value}]`, `why`/`how` support `{placeholder}` templating. | `engine._evaluate_tweaks` |
 
 **Note the two separate "cost" concepts**: `setting["cost"]` (numeric curve,
@@ -160,6 +160,15 @@ via `Database` (`database.py`):
 qualitative int shown in the UI's per-setting detail pane via `_cost_label`).
 They are populated independently in the DB — if the FPS model and the
 detail-pane label ever visibly disagree for a setting, check both fields.
+
+**`confidence: "unverified"`** (new, `ingame_settings.json` only): marks a setting
+proposed by BF6 Tuner's own tooling rather than sourced from a confirmed BF6
+profile dump — see `unverified_settings_note` in the file. Every such entry
+*deliberately* has no `profsave_key`, so `writer.profsave_plan`'s "only touch
+keys already present" rule means it structurally can never be written to
+PROFSAVE_profile until someone confirms the real key and removes the flag.
+The UI surfaces this with an "(unverified)" label suffix and a badge in the
+detail pane — never presented as researched fact.
 
 Encryption: `packaging/build.py` packs all five files with a fresh random
 32-byte key (`crypto.new_key()`) into `bf6tuner.db` and writes the key to
@@ -185,6 +194,18 @@ undefined behavior — don't copy a `.db` next to a source checkout.
   has no editor of its own — a "Frame limit →" button jumps to and selects
   that row on the In-game settings tab instead (`_goto_frame_limit`), so
   there is exactly one place that owns the frame cap.
+- Both the **settings table and the User.cfg table** group their rows by
+  category (`choice.menu` / `command["group"]`) with clickable, collapsible
+  header rows (`_make_header_row`, shared), a search box that overrides
+  collapse state and hides non-matching groups entirely
+  (`_apply_settings_filter`/`_apply_cfg_filter`), a "jump to category" combo,
+  and expand/collapse-all. Row structure (including header rows) is still
+  built exactly once (same "rebuilding destroys the widget mid-signal"
+  constraint as before) — a parallel `self._settings_row_kind` /
+  `self._cfg_row_kind` list (`[("header", menu) | ("choice"/"line", id), ...]`)
+  is what every row-index lookup (detail pane, `_goto_frame_limit`, reveal/
+  jump) now goes through instead of indexing straight into `rec.settings`/
+  `rec.cfg`, since header rows shift those indices around.
 - The header's **update button/banner** is populated by `UpdateCheckWorker`
   (same off-thread pattern as `DetectWorker`), fired once silently at startup
   and again on demand via "Check for updates"; `UpdateDialog`
@@ -289,6 +310,61 @@ tests as of the last README update).
 
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
+
+### 2026-09-07 (3) — 4 new unverified settings + grouped/searchable tables
+User asked for "additional settings that could be modified" and "much better
+UI". Clarified scope first (AskUserQuestion) rather than guessing: new
+settings would be proposed-and-flagged-unverified (not fabricated as fact),
+and the UI work would prioritise navigation/findability over visual polish.
+
+- **4 new in-game settings**, `data/ingame_settings.json` v2026.09.07.1:
+  `sharpening` (slider), `view_distance` (enum, Video > Advanced — argued in
+  its own `note` why esports/competitive keep it *high*, unlike every other
+  quality slider, since late mesh/LOD pop-in cuts both ways in a shooter),
+  `reflection_quality` (enum), `weapon_fov` (slider, `personal: true`, Video >
+  Basic). All four carry the new `"confidence": "unverified"` field and
+  **no `profsave_key`** — the safety net is structural, not a promise: with no
+  key, `writer.profsave_plan`'s existing "never invent PROFSAVE keys" rule
+  means they can *never* reach a real profile write no matter what override is
+  set, and `compare.py`'s existing "no profsave_key → unknown bucket" logic
+  already classifies them correctly with zero code changes. Verified both
+  invariants by hand (see test names below) before considering this safe.
+  Added `unverified_settings_note` documenting the convention at the top of
+  the JSON file, mirroring `cfg_commands.json`'s `confidence_levels` glossary.
+  No `engine.py` changes were needed at all — the generic preset/override/
+  cost-curve machinery already handles a plain enum/slider setting with no
+  special-casing required.
+- 14 new tests in `test_engine.py` (146 total): each of the 4 settings is
+  recommended+flagged+overridable, `test_..._never_reach_a_profsave_write`
+  proves the structural safety net with a deliberately-planted fake key,
+  `test_raising_view_distance_costs_frames` checks the cost curve moves the
+  FPS estimate in the right direction, and one checks `compare.py` buckets
+  all four as `unknown`.
+- **UI: grouped, collapsible, searchable tables** for both the in-game
+  settings tab and the User.cfg tab (previously a single flat scroll of 39 /
+  17 rows each). See §4 above for the row-kind mechanism; `_build_table_nav_row`
+  is the one genuinely shared widget-construction helper between the two tabs
+  (the row-sync/detail-pane methods stay parallel-but-separate, matching this
+  file's existing per-tab-duplication style rather than a forced abstraction).
+  Unverified settings get an "(unverified)" label suffix, muted row colour,
+  and a warning-coloured badge + explanation in the detail pane.
+- Verified everything by constructing the real `MainWindow` off-screen
+  (`QT_QPA_PLATFORM=offscreen`) and driving it directly: row/group counts,
+  jump-combo contents, search filtering (hides non-matching groups
+  entirely), collapse/expand-all, header-row click-to-toggle, and
+  `_reveal_settings_row` un-collapsing + clearing the search box + scrolling
+  + selecting the right row when the linked `GameTime.MaxVariableFps` cfg row
+  jumps to "Frame limit". All matched expectations exactly.
+- Not done / flagged for later: only 4 settings added this round (kept
+  deliberately small given the "don't fabricate" constraint) — if the user
+  supplies a real BF6 profile dump or menu reference, promote these out of
+  `unverified` (add the real `profsave_key`, drop the `confidence` field) and
+  extend with real data rather than more guesses. UI-wise, "visual polish"
+  (icons, spacing, typography) was explicitly deprioritised in favour of
+  navigation this round and is still open if wanted later.
+- Followed the now-standing build/release rule ([[bf6-build-workflow]]
+  memory): tests → commit → push straight to `main` → poll Actions → pull the
+  artifact into `dist/` via the cached Git Credential Manager token.
 
 ### 2026-09-07 (2) — Editable User.cfg + update checker
 Two features, both requested directly:

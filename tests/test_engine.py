@@ -553,3 +553,63 @@ def test_cfg_overrides_are_written_into_user_cfg(db):
     rendered = writer.render_user_cfg(forced)
     assert "RenderDevice.RenderAheadLimit 4" in rendered
     assert "[you changed this - recommended: 1]" in rendered
+
+
+# -- unverified in-game settings ---------------------------------------------
+# sharpening / view_distance / reflection_quality / weapon_fov were added
+# without a confirmed profile key (see data/ingame_settings.json's
+# 'unverified_settings_note'). They must behave like every other setting
+# (recommended, costed, overridable) while being structurally incapable of
+# writing to PROFSAVE_profile until someone confirms the real key.
+
+UNVERIFIED_IDS = ("sharpening", "view_distance", "reflection_quality", "weapon_fov")
+
+
+@pytest.mark.parametrize("setting_id", UNVERIFIED_IDS)
+def test_unverified_settings_are_recommended_and_flagged(db, setting_id):
+    rec = recommend(db, make_profile(), Target(preset="competitive"))
+    choice = next(c for c in rec.settings if c.setting_id == setting_id)
+    setting = db.setting(setting_id)
+    assert setting["confidence"] == "unverified"
+    assert setting.get("profsave_key") is None
+    assert choice.value is not None
+
+
+@pytest.mark.parametrize("setting_id", UNVERIFIED_IDS)
+def test_unverified_settings_are_overridable(db, setting_id):
+    setting = db.setting(setting_id)
+    value = 3 if setting["type"] == "enum" else 55
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       overrides={setting_id: value})
+    choice = next(c for c in forced.settings if c.setting_id == setting_id)
+    assert choice.overridden and choice.value == value
+
+
+@pytest.mark.parametrize("setting_id", UNVERIFIED_IDS)
+def test_unverified_settings_never_reach_a_profsave_write(db, setting_id):
+    """No profsave_key means writer.profsave_plan can never touch it, no
+    matter what is in the existing file - the safety net is structural."""
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       overrides={setting_id: 3})
+    setting = db.setting(setting_id)
+    fake_key = f"GstRender.{setting_id}"
+    plan = writer.profsave_plan(forced, {fake_key: "0"})
+    assert all(key != fake_key for key, _, _ in plan)
+
+
+def test_raising_view_distance_costs_frames(db):
+    auto = recommend(db, make_profile(), Target(preset="competitive"))
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       overrides={"view_distance": 3})
+    assert forced.predicted_fps <= auto.predicted_fps
+
+
+def test_unverified_settings_are_not_comparable_to_a_real_profile(db):
+    """No profsave_key => compare.py has nothing to read, so these land in
+    the 'not stored in the profile' bucket rather than being silently wrong."""
+    from bf6tuner import compare
+
+    rec = recommend(db, make_profile(), Target(preset="competitive"))
+    comparison = compare.build(db, rec, "", "")
+    unknown_ids = {c.setting_id for c in comparison.unknown}
+    assert unknown_ids.issuperset(UNVERIFIED_IDS)

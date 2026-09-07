@@ -1,6 +1,6 @@
 {
   "schema": "bf6tuner.ingame_settings/1",
-  "version": "2026.09.06.1",
+  "version": "2026.09.07.1",
   "profsave": {
     "paths": [
       "%USERPROFILE%\\Documents\\Battlefield 6\\settings\\PROFSAVE_profile",
@@ -1897,8 +1897,230 @@
           ]
         }
       }
+    },
+    {
+      "id": "sharpening",
+      "label": "Sharpening",
+      "menu": "Video > Advanced",
+      "confidence": "unverified",
+      "type": "slider",
+      "min": 0,
+      "max": 100,
+      "unit": "%",
+      "presets": {
+        "esports": 70,
+        "competitive": 60,
+        "balanced": 40,
+        "quality": 20
+      },
+      "impact": {
+        "gpu": 1,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "A contrast-adaptive sharpening pass, most useful paired with an upscaler or a resolution scale below 100%, both of which soften the image. Close to free on GPU time. Unverified: this app's authors have not confirmed BF6's exact menu wording or profile key for it, so it is not written to your profile automatically - set it by hand and treat the recommended value as a starting point.",
+      "cost": {
+        "interpolate": true,
+        "0": {
+          "gpu": -0.2
+        },
+        "100": {
+          "gpu": 0.6
+        }
+      },
+      "tradeoff": {
+        "raise": {
+          "pros": [
+            "Recovers edge clarity lost to upscaling or a sub-100% resolution scale",
+            "Makes distant players easier to pick out against foliage"
+          ],
+          "cons": [
+            "Over-sharpening haloes edges and can make distant textures shimmer - worse for target ID than it helps"
+          ]
+        },
+        "lower": {
+          "pros": [
+            "Cleaner, less noisy image, especially paired with TAA"
+          ],
+          "cons": [
+            "Softer edges, more noticeable if you are running an upscaler below native"
+          ]
+        }
+      }
+    },
+    {
+      "id": "view_distance",
+      "label": "View / LOD Distance",
+      "menu": "Video > Advanced",
+      "confidence": "unverified",
+      "type": "enum",
+      "options": [
+        { "value": 0, "label": "Low" },
+        { "value": 1, "label": "Medium" },
+        { "value": 2, "label": "High" },
+        { "value": 3, "label": "Ultra" }
+      ],
+      "presets": {
+        "esports": 2,
+        "competitive": 2,
+        "balanced": 1,
+        "quality": 3
+      },
+      "impact": {
+        "gpu": 3,
+        "cpu": 2,
+        "vram": 1
+      },
+      "note": "Controls the distance at which meshes drop to lower-detail models and how far out foliage and props draw in. Unlike most settings here, going low is not a clean competitive win: it can make distant enemies pop into view later for you too, not just look worse - which is why esports/competitive keep this at High rather than the usual minimum. Unverified: not confirmed against a real BF6 profile, so it is not written to your profile automatically - set it by hand.",
+      "cost": {
+        "1": {
+          "gpu": 0,
+          "cpu": 0
+        },
+        "0": {
+          "gpu": -3.0,
+          "cpu": -2.0
+        },
+        "2": {
+          "gpu": 3.5,
+          "cpu": 2.5
+        },
+        "3": {
+          "gpu": 7.0,
+          "cpu": 5.0
+        }
+      },
+      "tradeoff": {
+        "raise": {
+          "pros": [
+            "Distant objects and enemies render in detail sooner instead of popping in late",
+            "Better information at long sightlines on open maps"
+          ],
+          "cons": [
+            "Real GPU and CPU cost from extra draw calls and mesh detail at range",
+            "Smaller benefit on dense, close-quarters maps"
+          ]
+        },
+        "lower": {
+          "pros": [
+            "Meaningful GPU/CPU saving, especially on open maps"
+          ],
+          "cons": [
+            "Distant enemies and objects pop into full detail later, which cuts both ways against an opponent running this higher",
+            "More visible LOD popping and foliage draw-in"
+          ]
+        }
+      }
+    },
+    {
+      "id": "reflection_quality",
+      "label": "Reflection Quality",
+      "menu": "Video > Advanced",
+      "confidence": "unverified",
+      "type": "enum",
+      "options": [
+        { "value": 0, "label": "Off" },
+        { "value": 1, "label": "Low" },
+        { "value": 2, "label": "Medium" },
+        { "value": 3, "label": "High" }
+      ],
+      "presets": {
+        "esports": 0,
+        "competitive": 0,
+        "balanced": 1,
+        "quality": 2
+      },
+      "impact": {
+        "gpu": 2,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Screen-space reflections on wet surfaces, glass and water. Mostly cosmetic - it does not hide or reveal players the way vegetation or shadows do - so cutting it is close to a free GPU saving for competitive play. Unverified: not confirmed against a real BF6 profile, so it is not written to your profile automatically - set it by hand.",
+      "cost": {
+        "1": {
+          "gpu": 0
+        },
+        "0": {
+          "gpu": -2.5
+        },
+        "2": {
+          "gpu": 2.0
+        },
+        "3": {
+          "gpu": 4.5
+        }
+      },
+      "tradeoff": {
+        "raise": {
+          "pros": [
+            "Convincing reflections on wet ground, glass and water"
+          ],
+          "cons": [
+            "A real GPU cost for something you are rarely looking directly at in a firefight"
+          ]
+        },
+        "lower": {
+          "pros": [
+            "Close to a free GPU saving - reflections rarely carry gameplay information"
+          ],
+          "cons": [
+            "Wet surfaces and glass look flat"
+          ]
+        }
+      }
+    },
+    {
+      "id": "weapon_fov",
+      "label": "Weapon Field of View",
+      "menu": "Video > Basic",
+      "confidence": "unverified",
+      "type": "slider",
+      "min": 60,
+      "max": 120,
+      "unit": "° weapon",
+      "presets": {
+        "esports": 80,
+        "competitive": 80,
+        "balanced": 75,
+        "quality": 70
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Independent from world Field of View above - this only changes how large your weapon model appears, not how much of the world you see. Free to render either way; purely a preference for how 'zoomed in' the gun feels. Unverified: not confirmed against a real BF6 profile, so it is not written to your profile automatically - set it by hand.",
+      "personal": true,
+      "cost": {
+        "interpolate": true,
+        "60": {
+          "gpu": 0
+        },
+        "120": {
+          "gpu": 0.1
+        }
+      },
+      "tradeoff": {
+        "raise": {
+          "pros": [
+            "Less of the screen occupied by the weapon model"
+          ],
+          "cons": [
+            "Some players prefer a low weapon FOV that feels unified with a low world FOV"
+          ]
+        },
+        "lower": {
+          "pros": [
+            "Gun feels closer and bigger, which some players prefer for weapon feedback"
+          ],
+          "cons": [
+            "More of the screen is taken up by the viewmodel"
+          ]
+        }
+      }
     }
   ],
+  "unverified_settings_note": "A setting marked confidence: 'unverified' is a plausible addition based on common Frostbite/FPS conventions - proposed by BF6 Tuner's own tooling, not sourced from a confirmed BF6 profile dump or menu screenshot. Each one deliberately has no profsave_key, so it is never written to your profile automatically (see database.py/writer.py's 'never invent PROFSAVE keys' rule) - it only ever shows up as a recommendation with reasoning, for you to set by hand and verify. Promote an entry out of 'unverified' by confirming its real menu wording and PROFSAVE key against an actual game install, then add profsave_key and drop the confidence field.",
   "cost_model": {
     "units": "Values are percent of total GPU or CPU frame time relative to the setting's baseline option, and GB for vram.",
     "baseline": "The option whose entry is all zeroes. For quality tiers that is normally 'High'.",
