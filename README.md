@@ -297,7 +297,7 @@ only thing that needs changing.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests -q          # 146 tests
+python -m pytest tests -q          # 153 tests
 PYTHONPATH=src python -m bf6tuner --preset competitive   # CLI, runs on Linux too
 ```
 
@@ -319,6 +319,7 @@ bf6/
 │   ├── crypto.py         AES-256-GCM bundle format
 │   ├── database.py       encrypted-bundle-first loader
 │   ├── update.py         checks GitHub for a newer build, never blocks or raises
+│   ├── icon.py           the app icon, drawn in pure Python - shared by the build and the running app
 │   ├── cli.py            headless mode
 │   └── ui/               Qt window, comparison view, restore/locate/update dialogs, theme
 ├── packaging/            build.py, build.bat, PyInstaller spec, icon generator

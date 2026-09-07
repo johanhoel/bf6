@@ -12,21 +12,37 @@ import traceback
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor, QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractSpinBox, QApplication, QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox,
     QFileDialog, QFrame, QGridLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow,
-    QMessageBox, QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy, QSpinBox, QSplitter,
-    QTableWidget, QTableWidgetItem, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
+    QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSpinBox,
+    QSplitter, QStyle, QTableWidget, QTableWidgetItem, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
 )
 
 from .. import APP_NAME, __version__
-from .. import compare, database, hardware, paths, prefs, update, writer
+from .. import compare, database, hardware, icon, paths, prefs, update, writer
 from ..engine import LINKED_CFG_KEYS, PRESETS, Recommendation, Target, recommend
 from . import theme
 from .locate import LocateDialog
 from .restore import RestoreDialog
 from .update_dialog import UpdateDialog
+
+
+def app_icon() -> QIcon:
+    """Renders the same reticle icon packaging/make_icon.py bakes into the
+    .exe, so a source checkout looks the same, not like a generic Python app.
+
+    Only 3 sizes, not the full SIZES tuple in bf6tuner.icon - the 256px render
+    is the expensive one (O(size^2) pure-Python pixel loop) and Qt scales a
+    QIcon down cleanly, so there is little to gain from rendering all six.
+    """
+    result = QIcon()
+    for size in (256, 64, 32):
+        pixmap = QPixmap()
+        pixmap.loadFromData(icon.render_png(size), "PNG")
+        result.addPixmap(pixmap)
+    return result
 
 RESOLUTIONS = [
     ("1920x1080", 1920, 1080), ("2560x1080", 2560, 1080), ("2560x1440", 2560, 1440),
@@ -54,8 +70,8 @@ def card(title: str) -> tuple[QFrame, QVBoxLayout]:
     frame = QFrame()
     frame.setObjectName("Card")
     layout = QVBoxLayout(frame)
-    layout.setContentsMargins(16, 14, 16, 16)
-    layout.setSpacing(9)
+    layout.setContentsMargins(18, 16, 18, 18)
+    layout.setSpacing(10)
     if title:
         label = QLabel(title.upper())
         label.setObjectName("CardTitle")
@@ -145,9 +161,11 @@ class MainWindow(QMainWindow):
         self._cfg_collapsed: set[str] = set()
         self._cfg_filter: str = ""
         self.update_info: update.UpdateInfo | None = None
+        self._busy_count = 0
         self._loading = True
 
         self.setWindowTitle(f"{APP_NAME} {__version__} - Battlefield 6 configurator")
+        self.setWindowIcon(app_icon())
         self.resize(1320, 880)
         self.setMinimumSize(1080, 700)
 
@@ -186,8 +204,18 @@ class MainWindow(QMainWindow):
         row.addLayout(stack)
         row.addStretch(1)
 
+        self.busy_indicator = QProgressBar()
+        self.busy_indicator.setRange(0, 0)  # indeterminate - a marquee, not a percentage
+        self.busy_indicator.setTextVisible(False)
+        self.busy_indicator.setFixedWidth(90)
+        self.busy_indicator.setFixedHeight(6)
+        self.busy_indicator.setVisible(False)
+        row.addWidget(self.busy_indicator)
+
+        style = self.style()
         self.update_button = QPushButton("Update available")
         self.update_button.setObjectName("Primary")
+        self.update_button.setIcon(style.standardIcon(QStyle.SP_ArrowUp))
         self.update_button.setToolTip("main has changes this build does not. Click to see what's new.")
         self.update_button.clicked.connect(lambda: self.show_update_dialog(force_check=False))
         self.update_button.setVisible(False)
@@ -198,6 +226,7 @@ class MainWindow(QMainWindow):
         row.addWidget(self.check_updates_button)
 
         self.redetect_button = QPushButton("Re-detect hardware")
+        self.redetect_button.setIcon(style.standardIcon(QStyle.SP_BrowserReload))
         self.redetect_button.clicked.connect(self.redetect)
         row.addWidget(self.redetect_button)
         return row
@@ -400,6 +429,17 @@ class MainWindow(QMainWindow):
         row.addWidget(collapse_button)
         return row
 
+    @staticmethod
+    def _show_no_matches_hint(note: QLabel, default_text: str, filter_text: str, any_match: bool) -> None:
+        """Search feedback: say so plainly when a query matches nothing,
+        rather than leaving the user looking at an all-hidden, blank table."""
+        if filter_text and not any_match:
+            note.setText(f"No matches for “{filter_text}”. Clear the search to see everything.")
+            note.setStyleSheet(f"color: {theme.WARN};")
+        else:
+            note.setText(default_text)
+            note.setStyleSheet("")
+
     def _build_settings_tab(self) -> QWidget:
         container = QWidget()
         layout = QVBoxLayout(container)
@@ -408,10 +448,11 @@ class MainWindow(QMainWindow):
 
         row = QHBoxLayout()
         row.setContentsMargins(6, 0, 6, 0)
-        self.override_note = dim(
+        self._settings_note_default = (
             "Every value here is editable. Change one and the prediction, the frame cap "
             "and the comparison all update to match. Click a category to collapse it."
         )
+        self.override_note = dim(self._settings_note_default)
         row.addWidget(self.override_note, 1)
 
         self.reset_overrides_button = QPushButton("Reset all to recommended")
@@ -462,7 +503,7 @@ class MainWindow(QMainWindow):
 
         row = QHBoxLayout()
         row.setContentsMargins(6, 0, 6, 0)
-        self.cfg_override_note = dim(
+        self._cfg_note_default = (
             "Every line the app decides to write is editable here too. Unlike the in-game "
             "settings, these are on/off policy calls, not a modelled frame-time cost - "
             "overriding one is reflected in the file and the comparison, but will not move "
@@ -470,6 +511,7 @@ class MainWindow(QMainWindow):
             "and confidence. The frame cap is set from the In-game settings tab instead, so "
             "the two never disagree."
         )
+        self.cfg_override_note = dim(self._cfg_note_default)
         row.addWidget(self.cfg_override_note, 1)
 
         self.reset_cfg_overrides_button = QPushButton("Reset all to recommended")
@@ -771,6 +813,11 @@ class MainWindow(QMainWindow):
                 continue
             collapsed = not text and current_group in self._settings_collapsed
             table.setRowHidden(row, collapsed or not row_matches.get(row, True))
+
+        self._show_no_matches_hint(
+            self.override_note, self._settings_note_default,
+            text, any(group_has_match.values()),
+        )
 
     def _on_settings_search_changed(self, text: str) -> None:
         self._settings_filter = text
@@ -1137,6 +1184,11 @@ class MainWindow(QMainWindow):
             collapsed = not text and current_group in self._cfg_collapsed
             table.setRowHidden(row, collapsed or not row_matches.get(row, True))
 
+        self._show_no_matches_hint(
+            self.cfg_override_note, self._cfg_note_default,
+            text, any(group_has_match.values()),
+        )
+
     def _on_cfg_search_changed(self, text: str) -> None:
         self._cfg_filter = text
         self._apply_cfg_filter()
@@ -1431,7 +1483,10 @@ class MainWindow(QMainWindow):
         self.path_label.setWordWrap(True)
         row.addWidget(self.path_label, 1)
 
+        style = self.style()
+
         self.locate_button = QPushButton("Locate files...")
+        self.locate_button.setIcon(style.standardIcon(QStyle.SP_DirOpenIcon))
         self.locate_button.setToolTip(
             "Point the app at PROFSAVE_profile or the game folder by hand. Remembered afterwards."
         )
@@ -1439,25 +1494,30 @@ class MainWindow(QMainWindow):
         row.addWidget(self.locate_button)
 
         self.backup_button = QPushButton("Back up now")
+        self.backup_button.setIcon(style.standardIcon(QStyle.SP_DriveHDIcon))
         self.backup_button.setToolTip("Snapshot both config files without changing anything.")
         self.backup_button.clicked.connect(self.backup_now)
         row.addWidget(self.backup_button)
 
         self.restore_button = QPushButton("Restore...")
+        self.restore_button.setIcon(style.standardIcon(QStyle.SP_DialogResetButton))
         self.restore_button.setToolTip("Put your configuration back to an earlier snapshot.")
         self.restore_button.clicked.connect(self.open_restore)
         row.addWidget(self.restore_button)
 
         self.export_button = QPushButton("Export report")
+        self.export_button.setIcon(style.standardIcon(QStyle.SP_DialogSaveButton))
         self.export_button.clicked.connect(self.export_report)
         row.addWidget(self.export_button)
 
         self.save_button = QPushButton("Save User.cfg only")
+        self.save_button.setIcon(style.standardIcon(QStyle.SP_DialogSaveButton))
         self.save_button.clicked.connect(self.save_user_cfg)
         row.addWidget(self.save_button)
 
         self.apply_button = QPushButton("Apply everything")
         self.apply_button.setObjectName("Primary")
+        self.apply_button.setIcon(style.standardIcon(QStyle.SP_DialogApplyButton))
         self.apply_button.setToolTip(
             "Writes User.cfg and the in-game settings, after taking one restore point covering both."
         )
@@ -1467,9 +1527,26 @@ class MainWindow(QMainWindow):
 
     # -- detection ---------------------------------------------------------
 
+    def _busy_start(self) -> None:
+        """Reference-counted so two concurrent background jobs (hardware
+        detection and the startup update check both fire from __init__) don't
+        have one job's completion hide the indicator while the other is
+        still running."""
+        self._busy_count += 1
+        self.busy_indicator.setVisible(True)
+
+    def _busy_stop(self) -> None:
+        self._busy_count = max(0, self._busy_count - 1)
+        if self._busy_count == 0:
+            self.busy_indicator.setVisible(False)
+
     def redetect(self) -> None:
         self.redetect_button.setEnabled(False)
+        self._busy_start()
         self.statusBar().showMessage("Detecting hardware...")
+        for key, label in self.hw_labels.items():
+            label.setText(f"detecting {key.lower()}...")
+            label.setStyleSheet(f"font-style: italic; color: {theme.TEXT_DIM};")
         self.worker = DetectWorker()
         self.worker.finished_ok.connect(self._on_detected)
         self.worker.failed.connect(self._on_detect_failed)
@@ -1477,6 +1554,7 @@ class MainWindow(QMainWindow):
 
     def _on_detect_failed(self, detail: str) -> None:
         self.redetect_button.setEnabled(True)
+        self._busy_stop()
         self.statusBar().showMessage("Hardware detection failed.")
         QMessageBox.warning(self, "Detection failed", detail[-1500:])
 
@@ -1484,6 +1562,9 @@ class MainWindow(QMainWindow):
         self.profile = profile
         self.game = game
         self.redetect_button.setEnabled(True)
+        self._busy_stop()
+        for label in self.hw_labels.values():
+            label.setStyleSheet("")
 
         p = profile
         topology = f"{p.cores}C / {p.threads}T"
@@ -1537,6 +1618,7 @@ class MainWindow(QMainWindow):
         is a network call; `silent` controls whether a dialog pops up when there
         is nothing new (the startup check should not interrupt anyone)."""
         self.check_updates_button.setEnabled(False)
+        self._busy_start()
         if not silent:
             self.statusBar().showMessage("Checking for updates...")
         self._update_worker = UpdateCheckWorker()
@@ -1547,6 +1629,7 @@ class MainWindow(QMainWindow):
 
     def _on_update_checked(self, info: update.UpdateInfo, silent: bool) -> None:
         self.check_updates_button.setEnabled(True)
+        self._busy_stop()
         self.update_info = info
         self.update_button.setVisible(info.available)
         if info.available:
@@ -1662,12 +1745,12 @@ class MainWindow(QMainWindow):
 
         self._fill_scroll(self.warnings_area, [
             (w.severity, w.title, w.body, None) for w in rec.warnings
-        ] or [("info", "Nothing to flag", "No warnings for this configuration.", None)])
+        ] or [("ok", "Nothing to flag", "No warnings for this configuration.", None)])
 
         self._fill_scroll(self.checks_area, [
             (t.get("severity", "low"), t["label"], t.get("why", ""), t.get("how", ""))
             for t in rec.tweaks
-        ] or [("info", "Nothing to check", "No system-level issues detected.", None)])
+        ] or [("ok", "Nothing to check", "No system-level issues detected.", None)])
 
         self._fill_comparison()
         changed = 0 if comparison is None else (
@@ -1846,11 +1929,14 @@ class MainWindow(QMainWindow):
 
         for severity, title, body, how in items:
             frame, inner = card("")
-            colour = theme.SEVERITY_COLOUR.get(severity, theme.TEXT_DIM)
-            heading = QLabel(
-                f"<span style='color:{colour}; font-weight:700'>{severity.upper()}</span>"
-                f"&nbsp;&nbsp;<b>{title}</b>"
-            )
+            if severity == "ok":
+                # A genuinely clean bill of health reads better as a positive
+                # checkmark than as just another neutral "INFO" badge.
+                badge = f"<span style='color:{theme.OK}; font-weight:700'>&#10003; ALL CLEAR</span>"
+            else:
+                colour = theme.SEVERITY_COLOUR.get(severity, theme.TEXT_DIM)
+                badge = f"<span style='color:{colour}; font-weight:700'>{severity.upper()}</span>"
+            heading = QLabel(f"{badge}&nbsp;&nbsp;<b>{title}</b>")
             heading.setWordWrap(True)
             inner.addWidget(heading)
             inner.addWidget(dim(body))
@@ -2029,6 +2115,7 @@ def run() -> int:
     app.setApplicationName(APP_NAME)
     app.setApplicationVersion(__version__)
     app.setStyleSheet(theme.STYLESHEET)
+    app.setWindowIcon(app_icon())
 
     try:
         db = database.load()
