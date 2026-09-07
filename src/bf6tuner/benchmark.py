@@ -14,13 +14,19 @@ point the app at your own copy once, the path is remembered via prefs.py's
 existing generic path-override mechanism (role "presentmon_exe"), same as
 the game install folder or PROFSAVE_profile.
 
-PresentMon's exact CLI flags have changed across major versions (the classic
-1.x PresentMon.exe/PresentMon64.exe vs. the current Intel PresentMon 2.x).
-`DEFAULT_ARGS_TEMPLATE` targets the common, long-stable subset of flags;
-if a given PresentMon build rejects them, the failure surfaces as a clear
-error (PresentMon's own stderr) rather than a silent bad capture - see
-`run_capture`. CSV column names are matched flexibly for the same reason
-(`_find_column`).
+Current Intel PresentMon (2.x) ships three pieces - a background service, a
+GUI, and a standalone console application (see
+github.com/GameTechDev/PresentMon, README-ConsoleApplication.md). This module
+targets the console application specifically (a single self-contained .exe,
+e.g. `PresentMon-2.3.1-x64.exe`, no service required) with its documented
+double-dash flags (`--process_name`, `--output_file`, `--timed`,
+`--stop_existing_session`, `--no_console_stats`) - not the older 1.x
+single-dash flags this file used before those were checked against the
+actual current docs. If a given build still rejects them (flags do drift
+between releases), the failure surfaces as a clear error (PresentMon's own
+stderr) rather than a silent bad capture - see `run_capture`. CSV column
+names are matched flexibly for the same reason (`_find_column`) -
+`MsBetweenPresents` is confirmed present in the 2.x console app's output.
 """
 
 from __future__ import annotations
@@ -44,10 +50,16 @@ PRESENTMON_CANDIDATE_NAMES = ("presentmon.exe", "presentmon64.exe")
 
 # {process}, {output}, {duration} are substituted by build_args(). Editable
 # from the UI's Advanced field if a given PresentMon build wants different
-# flags - not hardcoded past this one place.
+# flags - not hardcoded past this one place. Flags verified against
+# github.com/GameTechDev/PresentMon's README-ConsoleApplication.md for the
+# 2.x console application: --process_name, --output_file and --timed are
+# the documented capture-by-name/duration flags; --stop_existing_session
+# clears a stale trace under the same name rather than erroring;
+# --no_console_stats suppresses the live per-frame console output, which
+# this app doesn't read anyway since it captures via subprocess.run().
 DEFAULT_ARGS_TEMPLATE = (
-    "-session_name BF6Tuner -process_name {process} -output_file {output} "
-    "-timed {duration} -stop_existing_session -no_top -terminate_after_timed"
+    "--process_name {process} --output_file {output} --timed {duration} "
+    "--stop_existing_session --no_console_stats"
 )
 
 
