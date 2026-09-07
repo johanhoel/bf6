@@ -328,6 +328,34 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-07 (7) — Row height, round 2: buttons were clipped, tightened further
+The previous fix (removing word-wrap + resizeRowsToContents) solved the
+giant-row bug but exposed a second one: at the new fixed row heights, the
+per-row "Reset"/"Frame limit ->" `QPushButton`s rendered as unreadable
+dots instead of text — a screenshot caught it immediately. Root cause:
+those buttons inherited the general `QPushButton` rule's `padding: 8px 15px`
+(added in the earlier visual-polish pass for the action bar, which sits
+outside any table), giving them a natural height taller than the row: Qt
+elides button text defensively when it can't fit, including vertically,
+not just the more familiar horizontal ellipsis case.
+
+- New `QPushButton#TableButton` style (`padding: 1px 8px`, smaller
+  border-radius, 12px font) applied to all three in-table buttons (settings
+  reset, cfg reset, cfg's linked "Frame limit ->"). Verified their
+  `sizeHint().height()` is 20px against 25-26px rows - comfortable margin,
+  not a hairline fit.
+- User also asked directly to tighten further ("match the height of the
+  font"): `QTableWidget::item` padding 7px→4px vertical, row heights
+  34→26 (settings) / 32→25 (cfg) / 30→26 (category headers).
+- Verified end to end, off-screen: row heights read back correctly from
+  `verticalHeader().defaultSectionSize()`; a sampled reset button's actual
+  `.text()` was genuinely `"Reset"` all along (confirming round 1's fix
+  didn't corrupt data, only round 2's button padding was rendering it
+  illegibly); editor widgets' size hints (22px) also fit inside the new
+  row height without clipping.
+- 153 tests unchanged (UI-only). Followed the standing build/release
+  workflow.
+
 ### 2026-09-07 (6) — Fixed a real row-height bug; menu bar; About dialog
 User reported (with a screenshot) a settings-table row rendering ~300px
 tall - not a subjective "make it nicer" complaint, an actual bug.
