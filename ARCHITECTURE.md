@@ -311,6 +311,38 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-07 (4) — Friendlier message for the shared GitHub rate limit
+The user hit "HTTP Error 403: rate limit exceeded" clicking **Check for
+updates** in the real app. Root cause: unauthenticated GitHub API requests
+share a 60/hour cap *per IP*, and this session's own build-monitoring
+(polling `actions/runs` every 15s while watching two CI builds) had burned
+through the household's quota from the same network the user was on -
+confirmed via `GET https://api.github.com/rate_limit` (0/60 remaining,
+~10 min to reset) and reproduced live with `update.check_for_update()`.
+- `update.py`: new `_friendly_error(exc)` recognises a 403 specifically
+  carrying `X-RateLimit-Remaining: 0` (vs. some other 403, e.g. an actual
+  permissions problem) and replaces the raw exception text with a plain-
+  language explanation plus the exact reset time read from
+  `X-RateLimit-Reset`, ending "this clears on its own; no action needed."
+  Other errors still fall back to `str(exc)` unchanged.
+- 3 new tests in `test_update.py` build a real `urllib.error.HTTPError` with
+  crafted headers rather than hitting the network, covering: recognised
+  (remaining=0), a 403 that isn't the rate limit (quota still available),
+  and a non-HTTP exception falling back to plain `str()`.
+- Verified live against the actual rate-limited state at the time (not just
+  the unit tests) - `check_for_update()` returned the new friendly message
+  with the correct reset time.
+- This is a design tradeoff inherent to the feature (no auth token shipped,
+  see update.py's module docstring), not something to "fix" further by
+  adding a token - 60/hour is plenty for normal use (one check per launch +
+  occasional manual clicks); it only bites when something else on the same
+  IP is also hammering the API unauthenticated, as happened here from my own
+  testing. If this recurs without an obvious cause, that's the first thing
+  to check, not a regression in the app.
+- 149 tests total. Followed the standing build/release workflow again;
+  updated [[bf6-build-workflow]] with the "poll authenticated" lesson from
+  today's rate-limit false alarm during monitoring.
+
 ### 2026-09-07 (3) — 4 new unverified settings + grouped/searchable tables
 User asked for "additional settings that could be modified" and "much better
 UI". Clarified scope first (AskUserQuestion) rather than guessing: new

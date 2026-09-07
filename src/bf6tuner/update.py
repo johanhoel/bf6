@@ -15,6 +15,7 @@ startup - the same philosophy as ``hardware.detect()``.
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import subprocess
 import sys
@@ -137,6 +138,29 @@ def parse_commit_list(payload: list[dict[str, Any]]) -> list[CommitInfo]:
     return [_commit_info(c) for c in payload]
 
 
+def _friendly_error(exc: Exception) -> str:
+    """GitHub's unauthenticated API is capped at 60 requests/hour *per IP*,
+    shared with everything else on the same network - easy to exhaust and
+    easy to mistake for the check being broken. Recognise it and say so."""
+    if isinstance(exc, urllib.error.HTTPError) and exc.code == 403:
+        remaining = (exc.headers.get("X-RateLimit-Remaining") if exc.headers else None)
+        if remaining == "0":
+            when = ""
+            reset = exc.headers.get("X-RateLimit-Reset") if exc.headers else None
+            if reset:
+                try:
+                    dt = _dt.datetime.fromtimestamp(int(reset), tz=_dt.timezone.utc)
+                    when = f" It resets at {dt.strftime('%H:%M UTC')}."
+                except (ValueError, OSError, OverflowError):
+                    pass
+            return (
+                "GitHub's API rate limit was hit - 60 checks per hour, shared across every "
+                "unauthenticated request from this network, not just this app." + when +
+                " This clears on its own; no action needed."
+            )
+    return str(exc)
+
+
 def check_for_update(timeout: float = 6.0) -> UpdateInfo:
     current = local_commit()
 
@@ -167,4 +191,4 @@ def check_for_update(timeout: float = 6.0) -> UpdateInfo:
             commits=commits, status="unknown",
         )
     except Exception as exc:
-        return UpdateInfo(current_sha=current, status="error", error=str(exc))
+        return UpdateInfo(current_sha=current, status="error", error=_friendly_error(exc))
