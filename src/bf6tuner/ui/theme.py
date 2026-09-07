@@ -62,6 +62,12 @@ QPushButton#Primary {{
 QPushButton#Primary:hover {{ background-color: #5f9bff; }}
 QPushButton#Primary:disabled {{ background-color: {ACCENT_DIM}; color: #9fb4d8; }}
 
+QPushButton#TableButton {{
+    padding: 1px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+}}
+
 QPushButton#Preset {{
     background-color: {BG_SUNKEN}; padding: 9px 6px; font-weight: 600; border-radius: 6px;
 }}
@@ -107,7 +113,7 @@ QHeaderView::section {{
     border: none; border-bottom: 1px solid {BORDER};
     padding: 7px 8px; font-weight: 600;
 }}
-QTableWidget::item {{ padding: 7px 8px; }}
+QTableWidget::item {{ padding: 4px 8px; }}
 QTableWidget::item:selected {{ background: {ACCENT_DIM}; color: {TEXT}; }}
 
 QPlainTextEdit {{
