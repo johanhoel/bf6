@@ -169,6 +169,32 @@ def test_run_capture_explains_presentmons_own_elevation_requirement(tmp_path, mo
         benchmark.run_capture(tmp_path / "PresentMon.exe", "bf6.exe", tmp_path / "out.csv", 5)
 
 
+def test_run_capture_says_so_plainly_when_pid_targeting_is_still_denied(tmp_path, monkeypatch):
+    """If PID targeting *also* gets access-denied, the "needs elevation to
+    resolve a name" theory doesn't hold - the message must not just repeat
+    the by-name explanation verbatim."""
+    presentmon_stderr = "error: failed to start trace session: access denied.\n"
+    def fake_run(*a, **k):
+        return subprocess.CompletedProcess(a, returncode=6, stdout="", stderr=presentmon_stderr)
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(benchmark.BenchmarkError, match="still needs administrator") as excinfo:
+        benchmark.run_capture(tmp_path / "PresentMon.exe", "bf6.exe", tmp_path / "out.csv", 5, pid=4321)
+    assert "not by name" in str(excinfo.value)
+    assert "4321" in str(excinfo.value)
+
+
+def test_error_messages_state_which_targeting_mode_was_used(tmp_path, monkeypatch):
+    def fake_run(*a, **k):
+        return subprocess.CompletedProcess(a, returncode=1, stdout="", stderr="some other failure")
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with pytest.raises(benchmark.BenchmarkError, match="PID 4321") as by_pid:
+        benchmark.run_capture(tmp_path / "PresentMon.exe", "bf6.exe", tmp_path / "out.csv", 5, pid=4321)
+
+    with pytest.raises(benchmark.BenchmarkError, match="no PID was found") as by_name:
+        benchmark.run_capture(tmp_path / "PresentMon.exe", "bf6.exe", tmp_path / "out.csv", 5)
+
+
 def test_run_capture_raises_if_no_csv_was_produced(tmp_path, monkeypatch):
     def fake_run(*a, **k):
         return subprocess.CompletedProcess(a, returncode=0, stdout="", stderr="")

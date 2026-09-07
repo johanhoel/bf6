@@ -791,7 +791,8 @@ class MainWindow(QMainWindow):
         self.benchmark_progress.setVisible(True)
         self.benchmark_progress.setRange(0, duration)
         self.benchmark_progress.setValue(0)
-        self.statusBar().showMessage(f"Recording for {duration}s - play normally...")
+        target_desc = f"PID {pid}" if pid else f"process name '{process_name}' - no PID found"
+        self.statusBar().showMessage(f"Recording for {duration}s ({target_desc}) - play normally...")
 
         self._benchmark_elapsed = 0
         self._benchmark_timer = QTimer(self)
