@@ -54,17 +54,29 @@ PRESENTMON_CANDIDATE_NAMES = ("presentmon.exe", "presentmon64.exe")
 # instead of the standalone console tool, which isn't. See run_capture().
 _ERROR_ELEVATION_REQUIRED = 740
 
-# {process}, {output}, {duration} are substituted by build_args(). Editable
-# from the UI's Advanced field if a given PresentMon build wants different
-# flags - not hardcoded past this one place. Flags verified against
-# github.com/GameTechDev/PresentMon's README-ConsoleApplication.md for the
-# 2.x console application: --process_name, --output_file and --timed are
-# the documented capture-by-name/duration flags; --stop_existing_session
-# clears a stale trace under the same name rather than erroring;
-# --no_console_stats suppresses the live per-frame console output, which
-# this app doesn't read anyway since it captures via subprocess.run().
+# {process}/{pid}, {output}, {duration} are substituted by build_args().
+# Editable from the UI's Advanced field if a given PresentMon build wants
+# different flags - not hardcoded past this one place. Flags verified
+# against github.com/GameTechDev/PresentMon's README-ConsoleApplication.md
+# for the 2.x console application: --process_name/--process_id,
+# --output_file and --timed are the documented capture/duration flags;
+# --stop_existing_session clears a stale trace under the same name rather
+# than erroring; --no_console_stats suppresses the live per-frame console
+# output, which this app doesn't read anyway since it captures via
+# subprocess.run().
+#
+# PID targeting is preferred when a PID is known (see run_capture's `pid`
+# param): PresentMon's own runtime warning says resolving a process by
+# *name* needs elevation for short-lived processes or ones started under
+# another account, which a known PID sidesteps - confirmed necessary in
+# practice (2026-09-07): --process_name still demanded elevation even from
+# the standalone console tool run under an already-elevated parent process.
 DEFAULT_ARGS_TEMPLATE = (
     "--process_name {process} --output_file {output} --timed {duration} "
+    "--stop_existing_session --no_console_stats"
+)
+DEFAULT_PID_ARGS_TEMPLATE = (
+    "--process_id {pid} --output_file {output} --timed {duration} "
     "--stop_existing_session --no_console_stats"
 )
 
@@ -99,16 +111,26 @@ def find_presentmon(explicit: Path | None = None) -> Path | None:
 
 
 def build_args(exe: Path, process_name: str, output_csv: Path, duration_s: int,
-                template: str = DEFAULT_ARGS_TEMPLATE) -> list[str]:
-    rendered = template.format(process=process_name, output=str(output_csv), duration=duration_s)
+                template: str | None = None, pid: int | None = None) -> list[str]:
+    if template is None:
+        template = DEFAULT_PID_ARGS_TEMPLATE if pid else DEFAULT_ARGS_TEMPLATE
+    rendered = template.format(
+        process=process_name, pid=pid or "", output=str(output_csv), duration=duration_s,
+    )
     return [str(exe), *rendered.split()]
 
 
 def run_capture(exe: Path, process_name: str, output_csv: Path, duration_s: int,
-                 template: str = DEFAULT_ARGS_TEMPLATE, timeout_s: float | None = None) -> None:
+                 template: str | None = None, timeout_s: float | None = None,
+                 pid: int | None = None) -> None:
     """Blocking - run this off the UI thread. Raises BenchmarkError with
-    PresentMon's own stderr on a non-zero exit rather than guessing why."""
-    args = build_args(exe, process_name, output_csv, duration_s, template)
+    PresentMon's own stderr on a non-zero exit rather than guessing why.
+
+    Prefers targeting by `pid` when the caller has one (see the note above
+    DEFAULT_PID_ARGS_TEMPLATE) - `process_name` is still required as the
+    fallback template's substitution and for error messages either way.
+    """
+    args = build_args(exe, process_name, output_csv, duration_s, template, pid=pid)
     try:
         result = subprocess.run(
             args, capture_output=True, text=True,
@@ -134,6 +156,14 @@ def run_capture(exe: Path, process_name: str, output_csv: Path, duration_s: int,
 
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or "no output").strip()[-1500:]
+        if "access denied" in detail.lower() or "elevat" in detail.lower():
+            raise BenchmarkError(
+                "PresentMon needs administrator rights to trace another process by name "
+                "(its own requirement - even the standalone console tool needs this, not "
+                "just the installed app). Close BF6 Tuner and relaunch it as Administrator "
+                "(right-click -> Run as administrator), then try recording again - nothing "
+                f"else in the app needs elevation, only this.\n\nPresentMon's message:\n{detail}"
+            )
         raise BenchmarkError(f"PresentMon exited with code {result.returncode}:\n{detail}")
     if not output_csv.is_file():
         raise BenchmarkError(

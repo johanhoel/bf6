@@ -338,6 +338,79 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-07 (15) — PID targeting, since admin-elevating the parent didn't help
+User tried the previous entry's fix (ran BF6 Tuner itself as Administrator)
+and it made **no difference** - same "access denied" from PresentMon. That
+contradicts the normal Windows rule that a child process inherits its
+parent's elevated token, so something about PresentMon's own privilege
+check apparently isn't satisfied by that alone. Rather than keep guessing
+at the elevation angle, went after what PresentMon's own warning actually
+said the problem was: resolving a process **by name** needs elevation for
+short-lived processes or ones "started on another account" - a known PID
+sidesteps that resolution step entirely.
+
+- New `paths.find_running_game_pid()`: same `tasklist.exe /FO CSV /NH`
+  approach as the existing `is_game_running()`, parsed properly with
+  `csv.reader` (not substring matching) to pull out the PID column: never
+  raises, returns `None` on any failure or off Windows.
+- `benchmark.py`: `build_args`/`run_capture` gained an optional `pid`
+  param. New `DEFAULT_PID_ARGS_TEMPLATE` (`--process_id {pid}` instead of
+  `--process_name {process}`); `build_args` picks it automatically when a
+  `pid` is supplied and no explicit template overrides it.
+  `BenchmarkWorker`/`start_benchmark()` now look up the running game's PID
+  via the new `paths` function and pass it through - falling back to
+  name-based targeting only if the PID lookup itself fails.
+- 7 new tests (193 total): `build_args`'s PID-vs-name template selection
+  (including that an explicit template still wins over the pid default),
+  and `find_running_game_pid`'s CSV parsing/not-found/off-Windows/
+  broken-tasklist cases - `IS_WINDOWS` monkeypatched rather than relying on
+  the actual OS, so these run identically in Linux CI and on Windows (the
+  same lesson from two entries ago, applied on the first attempt this
+  time).
+- Verified the actual wiring end-to-end, off-screen: patched
+  `paths.find_running_game_pid`/`is_game_running` and spied on
+  `benchmark.run_capture` to confirm `start_benchmark()` really does thread
+  a real PID through to a `--process_id 5555 ...` argument list, not just
+  that the isolated function works.
+- **Still unverified**: whether PID targeting actually clears the access-
+  denied error against a real running game - that requires the user to
+  test it. If it doesn't, the elevation requirement may be more
+  fundamental than name-resolution (e.g. genuinely needs the *game*
+  process itself, not just PresentMon, to be running elevated, or needs
+  SYSTEM rather than plain Administrator) - worth asking the user to try
+  running PresentMon directly from an elevated cmd prompt (no BF6 Tuner
+  involved) targeting the game's real PID, as the next isolating test if
+  this doesn't resolve it.
+- Followed the standing build/release workflow.
+
+### 2026-09-07 (14) — PresentMon needs elevation even as the standalone tool
+User got the *right* PresentMon this time (standalone console tool, no
+WinError 740) but a new, different failure: PresentMon itself exits with
+code 6 and explains that it needs elevated privilege to reliably identify
+and target another process by name via `--process_name` - a distinct
+requirement from the previous entry's "wrong executable" problem. This is
+apparently true of the standalone tool in general, not just the installed
+GUI app.
+
+- `run_capture` now recognises this by scanning the non-zero-exit output
+  for "access denied" / "elevat" and gives the actual fix directly: close
+  BF6 Tuner and relaunch it as Administrator (elevation on the parent
+  process is inherited by the PresentMon child it spawns), rather than
+  just surfacing PresentMon's raw stderr with no guidance. Only the
+  Benchmark tab needs this - nothing else in the app touches anything that
+  requires admin.
+- Considered but did not build: auto-relaunching the app elevated via
+  `ShellExecuteW(..., "runas", ...)` when this is detected. Real UX win if
+  it works, but real edge cases too (frozen .exe vs. dev `python -m
+  bf6tuner` have different relaunch commands, and a wrong self-relaunch
+  could confuse more than it helps) - flagged as a possible follow-up, not
+  attempted this round.
+- 1 new test using the verbatim (trimmed) PresentMon stderr from the real
+  failure, via a plain `subprocess.CompletedProcess` (no OSError/.winerror
+  involved this time, so no repeat of the prior entry's Linux-CI gotcha).
+  186 tests total.
+- Followed the standing build/release workflow.
+
 ### 2026-09-07 (13) — The elevation test itself only worked on Windows
 The previous commit's two new tests passed locally (this machine is
 Windows) but **failed CI's "Tests (Linux)" job**: `OSError(22, "...", None,

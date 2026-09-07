@@ -401,3 +401,32 @@ def is_game_running() -> bool:
         return any(name in listing for name in EXE_NAMES)
     except Exception:
         return False
+
+
+def find_running_game_pid() -> int | None:
+    """PID of the running game process, if any.
+
+    Used to let PresentMon target the process by --process_id rather than
+    --process_name - PresentMon's own docs say name resolution needs
+    elevation for short-lived processes or ones started under another
+    account, which a known PID sidesteps entirely (see benchmark.py).
+    """
+    if not IS_WINDOWS:
+        return None
+    try:
+        import csv
+        import io
+        import subprocess
+
+        proc = subprocess.run(
+            ["tasklist.exe", "/FO", "CSV", "/NH"],
+            capture_output=True, text=True, timeout=20, creationflags=0x08000000,
+        )
+        for row in csv.reader(io.StringIO(proc.stdout or "")):
+            if len(row) < 2:
+                continue
+            if any(name in row[0].lower() for name in EXE_NAMES):
+                return int(row[1])
+    except Exception:
+        pass
+    return None
