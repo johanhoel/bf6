@@ -465,3 +465,91 @@ def test_overridden_values_flow_into_the_profsave_plan(db):
                        overrides={"shadow_quality": 3})
     plan = writer.profsave_plan(forced, {"GstRender.ShadowQuality": "0"})
     assert ("GstRender.ShadowQuality", "0", "3") in plan
+
+
+# -- per-User.cfg-line overrides ---------------------------------------------
+# Same idea as setting overrides, but these are policy switches documented as
+# pros/cons in cfg_commands.json rather than a frame-time cost curve, so the
+# FPS estimate must NOT move when one changes - that would misrepresent what
+# these commands actually are.
+
+def test_cfg_override_replaces_the_value_and_records_what_was_recommended(db):
+    auto = recommend(db, make_profile(), Target(preset="competitive"))
+    baseline = next(l for l in auto.cfg if l.key == "RenderDevice.RenderAheadLimit")
+
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       cfg_overrides={"RenderDevice.RenderAheadLimit": 3})
+    line = next(l for l in forced.cfg if l.key == "RenderDevice.RenderAheadLimit")
+    assert line.value == 3
+    assert line.overridden
+    assert line.recommended_value == baseline.value
+    assert forced.cfg_overrides == {"RenderDevice.RenderAheadLimit": 3}
+
+
+def test_cfg_override_does_not_move_the_predicted_fps(db):
+    """Unlike in-game setting overrides, these have no cost curve."""
+    auto = recommend(db, make_profile(), Target(preset="competitive"))
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       cfg_overrides={"RenderDevice.RenderAheadLimit": 5,
+                                      "RenderDevice.VSyncEnable": 1})
+    assert forced.predicted_fps == auto.predicted_fps
+    assert forced.gpu_fps == auto.gpu_fps and forced.cpu_fps == auto.cpu_fps
+
+
+def test_cfg_overrides_are_announced(db):
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       cfg_overrides={"RenderDevice.RenderAheadLimit": 3})
+    assert any("overridden by you" in w.title for w in forced.warnings)
+
+
+def test_frame_cap_is_not_directly_overridable_via_cfg(db):
+    """GameTime.MaxVariableFps is owned by the 'frame_limit' setting instead,
+    so the file and the prediction can never disagree about the cap."""
+    auto = recommend(db, make_profile(), Target(preset="competitive"))
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       cfg_overrides={"GameTime.MaxVariableFps": 30})
+    line = next(l for l in forced.cfg if l.key == "GameTime.MaxVariableFps")
+    assert line.value == auto.frame_cap
+    assert not line.overridden
+    assert "GameTime.MaxVariableFps" not in forced.cfg_overrides
+
+
+def test_a_command_the_app_never_writes_cannot_be_forced_via_cfg_override(db):
+    """WorldRender.SkyEnable is never emitted (visibility exploit) - an override
+    for it must not conjure the line into existence."""
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       cfg_overrides={"WorldRender.SkyEnable": 0})
+    assert all(l.key != "WorldRender.SkyEnable" for l in forced.cfg)
+    assert forced.cfg_overrides == {}
+
+
+def test_cfg_override_matching_the_recommendation_is_not_flagged(db):
+    auto = recommend(db, make_profile(), Target(preset="competitive"))
+    same = next(l for l in auto.cfg if l.key == "RenderDevice.RenderAheadLimit").value
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       cfg_overrides={"RenderDevice.RenderAheadLimit": same})
+    assert forced.cfg_overrides == {}
+    line = next(l for l in forced.cfg if l.key == "RenderDevice.RenderAheadLimit")
+    assert not line.overridden
+
+
+def test_a_nonsense_cfg_override_does_not_crash(db):
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       cfg_overrides={"RenderDevice.RenderAheadLimit": "banana",
+                                      "Not.A.RealCommand": 1})
+    assert forced.predicted_fps > 0
+
+
+def test_cfg_override_is_clamped_to_the_commands_declared_range(db):
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       cfg_overrides={"RenderDevice.RenderAheadLimit": 999})
+    line = next(l for l in forced.cfg if l.key == "RenderDevice.RenderAheadLimit")
+    assert line.value == 5  # cfg_commands.json's declared max for this key
+
+
+def test_cfg_overrides_are_written_into_user_cfg(db):
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       cfg_overrides={"RenderDevice.RenderAheadLimit": 4})
+    rendered = writer.render_user_cfg(forced)
+    assert "RenderDevice.RenderAheadLimit 4" in rendered
+    assert "[you changed this - recommended: 1]" in rendered

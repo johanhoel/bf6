@@ -14,18 +14,19 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
-    QAbstractSpinBox, QApplication, QButtonGroup, QCheckBox, QComboBox, QFileDialog, QFrame,
-    QGridLayout, QHBoxLayout, QHeaderView, QLabel, QMainWindow, QMessageBox,
+    QAbstractSpinBox, QApplication, QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox,
+    QFileDialog, QFrame, QGridLayout, QHBoxLayout, QHeaderView, QLabel, QMainWindow, QMessageBox,
     QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy, QSpinBox, QSplitter, QTableWidget,
     QTableWidgetItem, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
 )
 
 from .. import APP_NAME, __version__
-from .. import compare, database, hardware, paths, prefs, writer
-from ..engine import PRESETS, Recommendation, Target, recommend
+from .. import compare, database, hardware, paths, prefs, update, writer
+from ..engine import LINKED_CFG_KEYS, PRESETS, Recommendation, Target, recommend
 from . import theme
 from .locate import LocateDialog
 from .restore import RestoreDialog
+from .update_dialog import UpdateDialog
 
 RESOLUTIONS = [
     ("1920x1080", 1920, 1080), ("2560x1080", 2560, 1080), ("2560x1440", 2560, 1440),
@@ -103,6 +104,17 @@ class DetectWorker(QThread):
             self.failed.emit(traceback.format_exc())
 
 
+class UpdateCheckWorker(QThread):
+    """Talks to the GitHub API, so keep it off the UI thread too."""
+
+    finished_ok = Signal(object)
+
+    def run(self) -> None:
+        # update.check_for_update() already never raises - it returns an
+        # UpdateInfo(status="error") instead - so there is nothing to catch here.
+        self.finished_ok.emit(update.check_for_update())
+
+
 class MainWindow(QMainWindow):
     def __init__(self, db: database.Database) -> None:
         super().__init__()
@@ -114,6 +126,10 @@ class MainWindow(QMainWindow):
         self.setting_overrides: dict = prefs.load_setting_overrides()
         self._setting_editors: dict[str, QWidget] = {}
         self._setting_rows: dict[str, int] = {}
+        self.cfg_overrides: dict = prefs.load_cfg_overrides()
+        self._cfg_editors: dict[str, QWidget] = {}
+        self._cfg_rows: dict[str, int] = {}
+        self.update_info: update.UpdateInfo | None = None
         self._loading = True
 
         self.setWindowTitle(f"{APP_NAME} {__version__} - Battlefield 6 configurator")
@@ -139,6 +155,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Database {db.version} loaded from {db.source}")
         self._loading = False
         self.redetect()
+        self.check_for_updates(silent=True)
 
     # -- construction ------------------------------------------------------
 
@@ -153,6 +170,17 @@ class MainWindow(QMainWindow):
         stack.addWidget(subtitle)
         row.addLayout(stack)
         row.addStretch(1)
+
+        self.update_button = QPushButton("Update available")
+        self.update_button.setObjectName("Primary")
+        self.update_button.setToolTip("main has changes this build does not. Click to see what's new.")
+        self.update_button.clicked.connect(lambda: self.show_update_dialog(force_check=False))
+        self.update_button.setVisible(False)
+        row.addWidget(self.update_button)
+
+        self.check_updates_button = QPushButton("Check for updates")
+        self.check_updates_button.clicked.connect(lambda: self.check_for_updates(silent=False))
+        row.addWidget(self.check_updates_button)
 
         self.redetect_button = QPushButton("Re-detect hardware")
         self.redetect_button.clicked.connect(self.redetect)
@@ -309,10 +337,11 @@ class MainWindow(QMainWindow):
         self.settings_table.verticalHeader().setDefaultSectionSize(48)
         self.tabs.addTab(self._build_settings_tab(), "In-game settings")
 
-        self.cfg_view = QPlainTextEdit()
-        self.cfg_view.setReadOnly(True)
-        self.cfg_view.setLineWrapMode(QPlainTextEdit.NoWrap)
-        self.tabs.addTab(self.cfg_view, "User.cfg")
+        self.cfg_table = self._make_table(
+            ["Command", "Value", "", "Why"], [260, 160, 155, -1]
+        )
+        self.cfg_table.verticalHeader().setDefaultSectionSize(44)
+        self.tabs.addTab(self._build_cfg_tab(), "User.cfg")
 
         self.warnings_area = self._make_scroll()
         self.tabs.addTab(self.warnings_area, "Warnings")
@@ -360,6 +389,62 @@ class MainWindow(QMainWindow):
         splitter.setSizes([9999, 150])
 
         layout.addWidget(splitter, 1)
+        return container
+
+    def _build_cfg_tab(self) -> QWidget:
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 10, 0, 0)
+        layout.setSpacing(8)
+
+        sub_tabs = QTabWidget()
+
+        commands_tab = QWidget()
+        commands_layout = QVBoxLayout(commands_tab)
+        commands_layout.setContentsMargins(0, 8, 0, 0)
+        commands_layout.setSpacing(8)
+
+        row = QHBoxLayout()
+        row.setContentsMargins(6, 0, 6, 0)
+        self.cfg_override_note = dim(
+            "Every line the app decides to write is editable here too. Unlike the in-game "
+            "settings, these are on/off policy calls, not a modelled frame-time cost - "
+            "overriding one is reflected in the file and the comparison, but will not move "
+            "the predicted FPS above. Click a row for the full explanation, pros, cons, risk "
+            "and confidence. The frame cap is set from the In-game settings tab instead, so "
+            "the two never disagree."
+        )
+        row.addWidget(self.cfg_override_note, 1)
+
+        self.reset_cfg_overrides_button = QPushButton("Reset all to recommended")
+        self.reset_cfg_overrides_button.clicked.connect(self.reset_all_cfg_overrides)
+        row.addWidget(self.reset_cfg_overrides_button)
+        commands_layout.addLayout(row)
+
+        splitter = QSplitter(Qt.Vertical)
+        splitter.setChildrenCollapsible(False)
+        splitter.addWidget(self.cfg_table)
+
+        self.cfg_detail = QTextEdit()
+        self.cfg_detail.setReadOnly(True)
+        self.cfg_detail.setObjectName("SettingDetail")
+        self.cfg_detail.setMinimumHeight(80)
+        self.cfg_detail.setMaximumHeight(200)
+        self.cfg_detail.setPlaceholderText(
+            "Click any row to see the full explanation, pros, cons, risk and confidence."
+        )
+        splitter.addWidget(self.cfg_detail)
+        splitter.setSizes([9999, 150])
+        commands_layout.addWidget(splitter, 1)
+
+        sub_tabs.addTab(commands_tab, "Commands")
+
+        self.cfg_view = QPlainTextEdit()
+        self.cfg_view.setReadOnly(True)
+        self.cfg_view.setLineWrapMode(QPlainTextEdit.NoWrap)
+        sub_tabs.addTab(self.cfg_view, "Raw file preview")
+
+        layout.addWidget(sub_tabs, 1)
         return container
 
     def _make_editor(self, choice, setting: dict) -> QWidget | None:
@@ -562,6 +647,281 @@ class MainWindow(QMainWindow):
         self.setting_overrides.clear()
         prefs.clear_setting_overrides()
         self.refresh()
+
+    # -- User.cfg table and overrides ---------------------------------------
+
+    def _make_cfg_editor(self, line, command: dict) -> QWidget | None:
+        """An editor matched to the command's declared type, or None for the
+        frame-cap line, which is owned by the 'Frame limit' in-game setting."""
+        if line.key in LINKED_CFG_KEYS:
+            return None
+
+        kind = command.get("type")
+        if kind == "bool":
+            box = _NoScrollComboBox()
+            box.addItem("Off", 0)
+            box.addItem("On", 1)
+            box.currentIndexChanged.connect(
+                lambda _=0, key=line.key: self._on_cfg_editor_changed(key)
+            )
+            return box
+
+        if kind == "int":
+            spin = _NoScrollSpinBox()
+            spin.setRange(int(command.get("min", 0)), int(command.get("max", 64)))
+            spin.setButtonSymbols(QAbstractSpinBox.UpDownArrows)
+            spin.setKeyboardTracking(False)
+            spin.valueChanged.connect(
+                lambda _=0, key=line.key: self._on_cfg_editor_changed(key)
+            )
+            return spin
+
+        if kind == "float":
+            spin = QDoubleSpinBox()
+            spin.setRange(float(command.get("min", 0.0)), float(command.get("max", 2.0)))
+            spin.setSingleStep(0.05)
+            spin.setDecimals(2)
+            spin.setButtonSymbols(QAbstractSpinBox.UpDownArrows)
+            spin.setKeyboardTracking(False)
+            spin.valueChanged.connect(
+                lambda _=0.0, key=line.key: self._on_cfg_editor_changed(key)
+            )
+            return spin
+
+        return None
+
+    def _sync_cfg_table(self) -> None:
+        """Same build-once-then-update-values approach as _sync_settings_table."""
+        rec = self.rec
+        assert rec is not None
+        table = self.cfg_table
+        building = table.rowCount() == 0
+
+        rows = [line for line in rec.cfg if line.key is not None]
+
+        if building:
+            table.setRowCount(len(rows))
+            table.currentCellChanged.connect(self._on_cfg_row_changed)
+
+        for row, line in enumerate(rows):
+            command = self.db.command(line.key) or {}
+            self._cfg_rows[line.key] = row
+
+            if building:
+                name = QTableWidgetItem(line.key)
+                name.setToolTip(command.get("summary", ""))
+                table.setItem(row, 0, name)
+
+                editor = self._make_cfg_editor(line, command)
+                if editor is not None:
+                    self._cfg_editors[line.key] = editor
+                    table.setCellWidget(row, 1, editor)
+                else:
+                    table.setItem(row, 1, QTableWidgetItem(""))
+
+                if line.key in LINKED_CFG_KEYS:
+                    linked = QPushButton("Frame limit ->")
+                    linked.setFlat(True)
+                    linked.setToolTip(
+                        "Set from the In-game settings tab, so the file and the prediction "
+                        "never disagree about the cap."
+                    )
+                    linked.clicked.connect(self._goto_frame_limit)
+                    table.setCellWidget(row, 2, linked)
+                elif editor is not None:
+                    reset = QPushButton("Reset")
+                    reset.setFlat(True)
+                    reset.clicked.connect(
+                        lambda _=False, key=line.key: self.reset_cfg_override(key)
+                    )
+                    table.setCellWidget(row, 2, reset)
+
+                table.setItem(row, 3, QTableWidgetItem(""))
+
+            name_item = table.item(row, 0)
+            if name_item is not None:
+                name_item.setText(("◆ " if line.overridden else "") + line.key)
+                if line.overridden:
+                    font = QFont()
+                    font.setBold(True)
+                    name_item.setFont(font)
+                    name_item.setForeground(_OVERRIDE_FG)
+                    name_item.setBackground(_OVERRIDE_BG)
+                else:
+                    name_item.setFont(QFont())
+                    name_item.setForeground(_NORMAL_FG)
+                    name_item.setBackground(QColor())
+
+            editor = self._cfg_editors.get(line.key)
+            if editor is not None:
+                editor.blockSignals(True)
+                if isinstance(editor, QComboBox):
+                    index = editor.findData(int(line.value))
+                    if index >= 0:
+                        editor.setCurrentIndex(index)
+                elif isinstance(editor, (QSpinBox, QDoubleSpinBox)):
+                    try:
+                        editor.setValue(float(line.value) if isinstance(editor, QDoubleSpinBox)
+                                         else int(round(float(line.value))))
+                    except (TypeError, ValueError):
+                        pass
+                editor.blockSignals(False)
+                if line.overridden:
+                    editor.setStyleSheet(
+                        f"background-color: {_OVERRIDE_BG.name()};"
+                        f" border: 2px solid {_OVERRIDE_EDGE};"
+                        f" border-radius: 6px;"
+                        f" color: {_OVERRIDE_EDGE};"
+                        f" font-weight: 600;"
+                    )
+                    editor.setToolTip(
+                        f"You set this to {line.value}.\nEngine recommended: {line.recommended_value}"
+                    )
+                else:
+                    editor.setStyleSheet("")
+                    editor.setToolTip("")
+            elif line.key in LINKED_CFG_KEYS:
+                cell = table.item(row, 1)
+                if cell is not None:
+                    cell.setText(str(line.value))
+                    cell.setForeground(Qt.gray)
+
+            reset_button = table.cellWidget(row, 2)
+            if isinstance(reset_button, QPushButton) and line.key not in LINKED_CFG_KEYS:
+                reset_button.setEnabled(line.overridden)
+                if line.overridden:
+                    reset_button.setText(f"↩ {line.recommended_value}")
+                    reset_button.setToolTip(
+                        f"Click to restore the recommended value: {line.recommended_value}"
+                    )
+                else:
+                    reset_button.setText("Reset")
+                    reset_button.setToolTip("Already matches the recommendation")
+
+            why = table.item(row, 3)
+            if why is not None:
+                summary = command.get("summary", line.comment)
+                if line.overridden:
+                    why_text = f"was: {line.recommended_value}    {summary}"
+                    why.setForeground(_OVERRIDE_FG)
+                else:
+                    why_text = summary
+                    why.setForeground(QColor(theme.TEXT_DIM))
+                why.setText(why_text)
+                why.setToolTip(why_text)
+
+        count = len(rec.cfg_overrides)
+        self.reset_cfg_overrides_button.setEnabled(bool(count))
+        self.tabs.setTabText(2, f"User.cfg ({count} changed)" if count else "User.cfg")
+        self.cfg_table.resizeRowsToContents()
+
+    def _goto_frame_limit(self) -> None:
+        self.tabs.setCurrentIndex(1)
+        row = self._setting_rows.get("frame_limit")
+        if row is not None:
+            self.settings_table.setCurrentCell(row, 0)
+            self.settings_table.scrollToItem(self.settings_table.item(row, 0))
+
+    def _on_cfg_editor_changed(self, key: str) -> None:
+        if self._loading:
+            return
+        editor = self._cfg_editors.get(key)
+        if editor is None:
+            return
+        value = editor.currentData() if isinstance(editor, QComboBox) else editor.value()
+
+        line = next((c for c in (self.rec.cfg if self.rec else []) if c.key == key), None)
+        if line is not None and not line.overridden and value == line.value:
+            return
+        if line is not None and line.overridden and value == line.recommended_value:
+            self.reset_cfg_override(key)
+            return
+
+        self.cfg_overrides[key] = value
+        prefs.set_cfg_override(key, value)
+        self.refresh()
+
+    def reset_cfg_override(self, key: str) -> None:
+        self.cfg_overrides.pop(key, None)
+        prefs.set_cfg_override(key, None)
+        self.refresh()
+
+    def reset_all_cfg_overrides(self) -> None:
+        if not self.cfg_overrides:
+            return
+        count = len(self.cfg_overrides)
+        confirm = QMessageBox.question(
+            self, "Reset User.cfg",
+            f"Drop {count} User.cfg line(s) you changed and go back to the recommendation?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+        self.cfg_overrides.clear()
+        prefs.clear_cfg_overrides()
+        self.refresh()
+
+    def _on_cfg_row_changed(self, row: int, _col: int, _prev_row: int, _prev_col: int) -> None:
+        if self.rec is None:
+            self.cfg_detail.clear()
+            return
+        rows = [line for line in self.rec.cfg if line.key is not None]
+        if row < 0 or row >= len(rows):
+            self.cfg_detail.clear()
+            return
+        line = rows[row]
+        command = self.db.command(line.key)
+        self._update_cfg_detail(line, command)
+
+    def _update_cfg_detail(self, line, command: dict | None) -> None:
+        if command is None:
+            self.cfg_detail.setPlainText(line.comment)
+            return
+
+        confidence = command.get("confidence", "")
+        risk = command.get("risk", "")
+        group = command.get("group", "").replace("_", " ")
+
+        parts: list[str] = []
+        parts.append(
+            f"<b style='font-size:14px; font-family:{theme.MONO}'>{line.key}</b>"
+            f"&nbsp;&nbsp;<span style='color:{theme.TEXT_DIM}'>{group}</span>"
+        )
+
+        badge_colour = {"legacy": theme.TEXT_DIM, "community": theme.INFO,
+                        "documented": theme.OK}.get(confidence, theme.TEXT_DIM)
+        risk_colour = {"safe": theme.OK, "moderate": theme.INFO, "high": theme.WARN,
+                       "unsafe": theme.BAD}.get(risk, theme.TEXT_DIM)
+        parts.append(
+            f"<br><span style='color:{theme.TEXT_DIM}; font-size:11px'>"
+            f"<span style='color:{badge_colour}'>{confidence or 'unknown'}</span> confidence"
+            f" &middot; <span style='color:{risk_colour}'>{risk or 'unknown'}</span> risk</span>"
+        )
+
+        detail = command.get("detail") or command.get("summary", "")
+        if detail:
+            parts.append(f"<br><br>{detail}")
+
+        pros = command.get("pros", [])
+        cons = command.get("cons", [])
+        if pros or cons:
+            parts.append(
+                f"<br><br><span style='color:{theme.INFO}; font-weight:600'>"
+                "Applying the value this app writes</span>"
+            )
+            for p in pros:
+                parts.append(f"<br><span style='color:{theme.OK}'>+</span>&nbsp;{p}")
+            for c in cons:
+                parts.append(f"<br><span style='color:{theme.WARN}'>−</span>&nbsp;{c}")
+
+        if line.overridden:
+            parts.append(
+                f"<br><br><span style='color:{theme.WARN}'>You have overridden this to "
+                f"{line.value}. The engine recommended {line.recommended_value}. This does not "
+                "move the predicted FPS above - measure it with the in-game frame time graph.</span>"
+            )
+
+        self.cfg_detail.setHtml("".join(parts))
 
     # -- setting detail pane -----------------------------------------------
 
@@ -789,6 +1149,56 @@ class MainWindow(QMainWindow):
         )
         self.refresh()
 
+    # -- update check --------------------------------------------------------
+
+    def check_for_updates(self, silent: bool) -> None:
+        """Ask GitHub whether main has moved on. Runs off the UI thread since it
+        is a network call; `silent` controls whether a dialog pops up when there
+        is nothing new (the startup check should not interrupt anyone)."""
+        self.check_updates_button.setEnabled(False)
+        if not silent:
+            self.statusBar().showMessage("Checking for updates...")
+        self._update_worker = UpdateCheckWorker()
+        self._update_worker.finished_ok.connect(
+            lambda info: self._on_update_checked(info, silent)
+        )
+        self._update_worker.start()
+
+    def _on_update_checked(self, info: update.UpdateInfo, silent: bool) -> None:
+        self.check_updates_button.setEnabled(True)
+        self.update_info = info
+        self.update_button.setVisible(info.available)
+        if info.available:
+            plural = "" if info.ahead_by == 1 else "s"
+            self.update_button.setText(f"Update available ({info.ahead_by} commit{plural})")
+
+        if silent:
+            if info.available:
+                self.statusBar().showMessage(
+                    f"An update is available - {info.ahead_by} commit(s) ahead of this build."
+                )
+            return
+
+        if info.status == "error":
+            self.statusBar().showMessage("Could not check for updates.")
+            QMessageBox.warning(
+                self, "Could not check for updates",
+                f"{info.error}\n\nYou can always check manually at "
+                f"https://github.com/{update.REPO}/commits/{update.BRANCH}",
+            )
+            return
+
+        self.statusBar().showMessage(
+            "Up to date." if info.status == "up_to_date" else "Checked for updates."
+        )
+        UpdateDialog(info, self).exec()
+
+    def show_update_dialog(self, force_check: bool) -> None:
+        if force_check or self.update_info is None:
+            self.check_for_updates(silent=False)
+            return
+        UpdateDialog(self.update_info, self).exec()
+
     # -- recomputation -----------------------------------------------------
 
     def _on_preset(self, index: int) -> None:
@@ -820,7 +1230,7 @@ class MainWindow(QMainWindow):
         )
         self.rec = recommend(
             self.db, self.profile, self.current_target(), install_drive_media=media,
-            overrides=self.setting_overrides,
+            overrides=self.setting_overrides, cfg_overrides=self.cfg_overrides,
         )
         self.comparison = compare.from_paths(
             self.db, self.rec, self.game.profsave, self.game.user_cfg
@@ -865,6 +1275,7 @@ class MainWindow(QMainWindow):
         self.prediction_note.setText(note)
 
         self._sync_settings_table()
+        self._sync_cfg_table()
 
         self.cfg_view.setPlainText(writer.render_user_cfg(rec).replace("\r\n", "\n"))
 
@@ -1035,8 +1446,13 @@ class MainWindow(QMainWindow):
             row = QLabel(f"<span style='color:{theme.WARN}'>&minus;</span>&nbsp; {con}")
             row.setWordWrap(True)
             inner.addWidget(row)
+        tags = []
         if change.risk in ("high", "unsafe") or change.confidence == "legacy":
-            inner.addWidget(dim(f"[{change.confidence or 'unknown'} / risk: {change.risk or 'unknown'}]"))
+            tags.append(f"{change.confidence or 'unknown'} / risk: {change.risk or 'unknown'}")
+        if self.rec is not None and change.key in self.rec.cfg_overrides:
+            tags.append("you overrode this in the User.cfg tab")
+        if tags:
+            inner.addWidget(dim(f"[{'; '.join(tags)}]"))
         return holder
 
     def _fill_scroll(self, area: QScrollArea, items: list[tuple[str, str, str, str | None]]) -> None:

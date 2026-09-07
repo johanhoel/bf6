@@ -240,7 +240,9 @@ def render_user_cfg(rec: Recommendation, include_comments: bool = True) -> str:
             continue
         if include_comments and line.comment:
             tag = ""
-            if line.confidence == "legacy":
+            if line.overridden:
+                tag = f" [you changed this - recommended: {line.recommended_value}]"
+            elif line.confidence == "legacy":
                 tag = " [legacy Frostbite key - may be a no-op in BF6]"
             elif line.risk == "high":
                 tag = " [measure this one]"

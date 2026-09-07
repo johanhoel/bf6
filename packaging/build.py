@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import datetime as dt
 import json
 import os
 import shutil
@@ -79,6 +80,29 @@ def prepare_bundle() -> tuple[Path, bytes]:
     assert set(restored) == set(DATASETS) and restored_header["version"] == __version__
     log("bundle verified: decrypts, passes its integrity tag, contains every dataset")
     return bundle, key
+
+
+def write_build_info() -> Path:
+    """Record the commit this build was made from, so the running app can ask
+    GitHub whether `main` has moved on since (see bf6tuner.update)."""
+    try:
+        commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=str(ROOT), capture_output=True,
+            text=True, timeout=10, check=True,
+        ).stdout.strip()
+    except Exception:
+        commit = ""
+    built_at = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    path = SRC / "bf6tuner" / "_build_info.py"
+    path.write_text(
+        '"""Generated at build time. Not checked in; regenerated on every build."""\n\n'
+        f'GIT_COMMIT = "{commit}"\n'
+        f'BUILT_AT = "{built_at}"\n',
+        encoding="utf-8",
+    )
+    log(f"build info -> commit {commit[:7] or 'unknown'}, built {built_at}")
+    return path
 
 
 def write_version_info() -> Path:
@@ -180,6 +204,7 @@ def main(argv: list[str] | None = None) -> int:
     build_ico(BUILD / "bf6tuner.ico")
     log(f"icon -> {BUILD / 'bf6tuner.ico'}")
     write_version_info()
+    write_build_info()
 
     source_root = run_pyarmor() if args.obfuscate else SRC
     built = run_pyinstaller(source_root, clean=not args.no_clean)

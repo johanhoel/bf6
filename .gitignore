@@ -1,5 +1,6 @@
 # Generated at build time - a fresh key on every build, never checked in
 src/bf6tuner/_keyring.py
+src/bf6tuner/_build_info.py
 packaging/_build/
 dist/
 build/

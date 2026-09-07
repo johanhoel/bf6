@@ -14,6 +14,7 @@ from typing import Any
 
 PATHS_FILE = "paths.json"
 OVERRIDES_FILE = "setting_overrides.json"
+CFG_OVERRIDES_FILE = "cfg_overrides.json"
 
 
 def config_dir() -> Path:
@@ -77,3 +78,27 @@ def set_setting_override(setting_id: str, value: Any | None) -> dict[str, Any]:
 
 def clear_setting_overrides() -> None:
     save_setting_overrides({})
+
+
+# -- per-line User.cfg overrides ----------------------------------------------
+
+def load_cfg_overrides() -> dict[str, Any]:
+    return _read(CFG_OVERRIDES_FILE)
+
+
+def save_cfg_overrides(values: dict[str, Any]) -> None:
+    _write(CFG_OVERRIDES_FILE, values)
+
+
+def set_cfg_override(key: str, value: Any | None) -> dict[str, Any]:
+    values = load_cfg_overrides()
+    if value is None:
+        values.pop(key, None)
+    else:
+        values[key] = value
+    save_cfg_overrides(values)
+    return values
+
+
+def clear_cfg_overrides() -> None:
+    save_cfg_overrides({})
