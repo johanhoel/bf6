@@ -328,6 +328,50 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-07 (6) — Fixed a real row-height bug; menu bar; About dialog
+User reported (with a screenshot) a settings-table row rendering ~300px
+tall - not a subjective "make it nicer" complaint, an actual bug.
+
+- **Root cause**: `_make_table()` had `setWordWrap(True)`, and both
+  `_sync_settings_table`/`_sync_cfg_table` called `resizeRowsToContents()`
+  at the end of every render. `resizeRowsToContents()` sizes each row from
+  its cells' content, including word-wrapped text in the stretch-resized
+  "Why" column - and that computation runs against whatever the column's
+  width happens to be *at that instant*, which is not guaranteed to already
+  match its final laid-out width (this predates my session's changes -
+  `resizeRowsToContents()` was already there per an earlier human commit,
+  "Auto-fit row heights in settings table" - my grouped-table refactor
+  didn't cause it, but made a marginal timing issue into a very visible one).
+  **Fix**: word wrap off, `resizeRowsToContents()` calls removed entirely.
+  Rows are now a fixed, predictable height (`setDefaultSectionSize`: 34
+  settings / 32 cfg / 30 for category headers) and Qt's default text
+  elision ("...") handles anything too long for its column - full text was
+  always available via the row's tooltip and the detail pane below anyway,
+  so nothing is lost. Verified directly: printed `rowHeight()` for the first
+  6 rows post-fix, all exactly 34 (30 for the one header row) - no outliers.
+- **Menu bar** (`_build_menu_bar`, called from `__init__`): File (Locate,
+  Back up, Restore, Export, Save, Apply, Exit), View (Re-detect, Focus
+  search, expand/collapse categories, reset overrides), Help (Check for
+  updates, GitHub link, About). Every action already existed as a button;
+  this adds keyboard shortcuts (Ctrl+L/B/S/E, Ctrl+Shift+R, Ctrl+Return,
+  F5, Ctrl+F, Ctrl+Q) and standard-convention discoverability on top - it
+  does not replace the action bar.
+- **Header bar**: wrapped in a `QFrame#HeaderBar` with a bottom border (it
+  used to float directly against the body with no separation), added the
+  app icon next to the title, and fixed the subtitle wrapping onto two
+  lines for no reason (`dim()` defaults to word-wrap on; overridden off for
+  this one label - there is always room for one short line).
+- **About dialog** (`show_about_dialog`, `Help > About`): `QMessageBox.about`
+  showing version, build commit (`update.local_commit()`), the loaded
+  database's version/source, and a GitHub link - the app previously had no
+  in-UI way to see any of this beyond the OS title bar text.
+- Verified everything by hand, off-screen: row heights (above), menu
+  contents for all three menus, About dialog invocation (patched
+  `QMessageBox.about` to avoid blocking in a headless script), and
+  Ctrl+F/`_focus_search` correctly focusing the active tab's search box.
+- 153 tests still pass unchanged - this was all UI wiring/layout, no
+  engine/data logic touched. Followed the standing build/release workflow.
+
 ### 2026-09-07 (5) — Visual polish pass
 Follow-up to the earlier "make the UI much better" request - that session
 covered navigation/findability; this one covers the deprioritised half
