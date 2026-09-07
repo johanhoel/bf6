@@ -34,6 +34,7 @@ QFrame#Card {{
     border: 1px solid {BORDER};
     border-radius: 10px;
 }}
+QFrame#HeaderBar {{ border: none; border-bottom: 1px solid {BORDER}; }}
 QLabel#CardTitle {{
     color: {TEXT_DIM};
     font-size: 11px;

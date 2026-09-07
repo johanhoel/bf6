@@ -12,7 +12,7 @@ import traceback
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtGui import QColor, QFont, QIcon, QPixmap
+from PySide6.QtGui import QAction, QColor, QFont, QIcon, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QAbstractSpinBox, QApplication, QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox,
     QFileDialog, QFrame, QGridLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow,
@@ -169,13 +169,15 @@ class MainWindow(QMainWindow):
         self.resize(1320, 880)
         self.setMinimumSize(1080, 700)
 
+        self._build_menu_bar()
+
         root = QWidget()
         self.setCentralWidget(root)
         outer = QVBoxLayout(root)
         outer.setContentsMargins(18, 16, 18, 12)
         outer.setSpacing(14)
 
-        outer.addLayout(self._build_header())
+        outer.addWidget(self._build_header())
 
         body = QHBoxLayout()
         body.setSpacing(14)
@@ -192,11 +194,96 @@ class MainWindow(QMainWindow):
 
     # -- construction ------------------------------------------------------
 
-    def _build_header(self) -> QHBoxLayout:
-        row = QHBoxLayout()
+    def _build_menu_bar(self) -> None:
+        """A conventional menu bar: everything here already exists as a
+        button somewhere - this adds keyboard shortcuts and discoverability
+        on top, it does not replace the action bar."""
+        menubar = self.menuBar()
+
+        file_menu = menubar.addMenu("&File")
+        self._add_action(file_menu, "&Locate files...", "Ctrl+L", self.locate_files)
+        self._add_action(file_menu, "Bac&k up now", "Ctrl+B", self.backup_now)
+        self._add_action(file_menu, "&Restore...", "Ctrl+Shift+R", self.open_restore)
+        file_menu.addSeparator()
+        self._add_action(file_menu, "&Export report...", "Ctrl+E", self.export_report)
+        self._add_action(file_menu, "&Save User.cfg only", "Ctrl+S", self.save_user_cfg)
+        self._add_action(file_menu, "&Apply everything", "Ctrl+Return", self.apply_everything)
+        file_menu.addSeparator()
+        self._add_action(file_menu, "E&xit", "Ctrl+Q", self.close)
+
+        view_menu = menubar.addMenu("&View")
+        self._add_action(view_menu, "&Re-detect hardware", "F5", self.redetect)
+        self._add_action(view_menu, "&Focus search", "Ctrl+F", self._focus_search)
+        view_menu.addSeparator()
+        self._add_action(view_menu, "Expand all settings categories", None,
+                          lambda: self._set_all_settings_collapsed(False))
+        self._add_action(view_menu, "Collapse all settings categories", None,
+                          lambda: self._set_all_settings_collapsed(True))
+        view_menu.addSeparator()
+        self._add_action(view_menu, "Reset all in-game setting overrides", None,
+                          self.reset_all_overrides)
+        self._add_action(view_menu, "Reset all User.cfg overrides", None,
+                          self.reset_all_cfg_overrides)
+
+        help_menu = menubar.addMenu("&Help")
+        self._add_action(help_menu, "&Check for updates...", None,
+                          lambda: self.check_for_updates(silent=False))
+        self._add_action(help_menu, "View project on GitHub", None, self._open_github)
+        help_menu.addSeparator()
+        self._add_action(help_menu, "&About BF6 Tuner...", None, self.show_about_dialog)
+
+    @staticmethod
+    def _add_action(menu, text: str, shortcut: str | None, slot) -> QAction:
+        action = QAction(text, menu)
+        if shortcut:
+            action.setShortcut(QKeySequence(shortcut))
+        action.triggered.connect(slot)
+        menu.addAction(action)
+        return action
+
+    def _focus_search(self) -> None:
+        """Jumps to whichever tab's search box is relevant right now."""
+        index = self.tabs.currentIndex()
+        target = self.settings_search if index == 1 else self.cfg_search if index == 2 else None
+        if target is None:
+            self.tabs.setCurrentIndex(1)
+            target = self.settings_search
+        target.setFocus()
+        target.selectAll()
+
+    def _open_github(self) -> None:
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+        QDesktopServices.openUrl(QUrl(f"https://github.com/{update.REPO}"))
+
+    def show_about_dialog(self) -> None:
+        commit = update.local_commit()
+        QMessageBox.about(
+            self, f"About {APP_NAME}",
+            f"<h3>{APP_NAME} {__version__}</h3>"
+            "<p>Hardware-aware Battlefield 6 settings and User.cfg configurator.</p>"
+            f"<p style='color:{theme.TEXT_DIM}'>Build commit: {commit[:7] or 'unknown'}<br>"
+            f"Database {self.db.version} from {self.db.source}</p>"
+            f"<p><a href='https://github.com/{update.REPO}'>github.com/{update.REPO}</a></p>",
+        )
+
+    def _build_header(self) -> QWidget:
+        frame = QFrame()
+        frame.setObjectName("HeaderBar")
+        row = QHBoxLayout(frame)
+        row.setContentsMargins(4, 0, 4, 14)
+
+        icon_label = QLabel()
+        icon_label.setPixmap(app_icon().pixmap(36, 36))
+        row.addWidget(icon_label)
+
         title = QLabel(APP_NAME)
         title.setObjectName("Title")
         subtitle = dim("Hardware-aware Battlefield 6 settings and User.cfg")
+        # A fixed single line, not the wrapping dim() default - there is
+        # always room for this short a subtitle, and wrapping it here just
+        # looks like a layout glitch rather than a deliberate two-line title.
+        subtitle.setWordWrap(False)
         stack = QVBoxLayout()
         stack.setSpacing(0)
         stack.addWidget(title)
@@ -229,7 +316,7 @@ class MainWindow(QMainWindow):
         self.redetect_button.setIcon(style.standardIcon(QStyle.SP_BrowserReload))
         self.redetect_button.clicked.connect(self.redetect)
         row.addWidget(self.redetect_button)
-        return row
+        return frame
 
     def _build_sidebar(self) -> QWidget:
         panel = QWidget()
@@ -378,13 +465,13 @@ class MainWindow(QMainWindow):
         self.settings_table = self._make_table(
             ["Setting", "Value", "", "Why"], [250, 200, 155, -1]
         )
-        self.settings_table.verticalHeader().setDefaultSectionSize(48)
+        self.settings_table.verticalHeader().setDefaultSectionSize(34)
         self.tabs.addTab(self._build_settings_tab(), "In-game settings")
 
         self.cfg_table = self._make_table(
             ["Command", "Value", "", "Why"], [260, 160, 155, -1]
         )
-        self.cfg_table.verticalHeader().setDefaultSectionSize(44)
+        self.cfg_table.verticalHeader().setDefaultSectionSize(32)
         self.tabs.addTab(self._build_cfg_tab(), "User.cfg")
 
         self.warnings_area = self._make_scroll()
@@ -749,8 +836,6 @@ class MainWindow(QMainWindow):
                              else "In-game settings")
         self._update_settings_header_texts()
         self._apply_settings_filter()
-        # Let each row grow to fit its content (Why column can wrap).
-        self.settings_table.resizeRowsToContents()
 
     def _make_header_row(self, table: QTableWidget, row: int, span: int) -> None:
         """A full-width, clickable category row. Click toggles collapse via
@@ -765,7 +850,7 @@ class MainWindow(QMainWindow):
         item.setBackground(QColor(theme.BG_RAISED))
         table.setItem(row, 0, item)
         table.setSpan(row, 0, 1, span)
-        table.setRowHeight(row, 28)
+        table.setRowHeight(row, 30)
 
     # -- category collapse / search (in-game settings) ----------------------
 
@@ -1130,7 +1215,6 @@ class MainWindow(QMainWindow):
         self.tabs.setTabText(2, f"User.cfg ({count} changed)" if count else "User.cfg")
         self._update_cfg_header_texts()
         self._apply_cfg_filter()
-        self.cfg_table.resizeRowsToContents()
 
     # -- category collapse / search (User.cfg) -------------------------------
 
@@ -1442,7 +1526,14 @@ class MainWindow(QMainWindow):
         table.setHorizontalHeaderLabels(headers)
         table.verticalHeader().setVisible(False)
         table.setAlternatingRowColors(True)
-        table.setWordWrap(True)
+        # Word-wrap + resizeRowsToContents() (the previous approach) computes
+        # each row's height against the stretch column's width at the moment
+        # of the call - if that hasn't settled yet (or just varies with a long
+        # "Why" sentence), a single row can balloon to hundreds of pixels tall.
+        # Fixed-height single-line rows are predictable; Qt elides overflowing
+        # text with "..." by default, and the full text is always available
+        # via the row's tooltip and the detail pane below.
+        table.setWordWrap(False)
         table.setEditTriggers(QTableWidget.NoEditTriggers)
         table.setSelectionBehavior(QTableWidget.SelectRows)
         header = table.horizontalHeader()
