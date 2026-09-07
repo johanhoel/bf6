@@ -15,9 +15,9 @@ from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
     QAbstractSpinBox, QApplication, QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox,
-    QFileDialog, QFrame, QGridLayout, QHBoxLayout, QHeaderView, QLabel, QMainWindow, QMessageBox,
-    QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy, QSpinBox, QSplitter, QTableWidget,
-    QTableWidgetItem, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
+    QFileDialog, QFrame, QGridLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow,
+    QMessageBox, QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy, QSpinBox, QSplitter,
+    QTableWidget, QTableWidgetItem, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
 )
 
 from .. import APP_NAME, __version__
@@ -38,6 +38,15 @@ PRESET_BLURB = {
     "competitive": "Fast, but still readable",
     "balanced": "Match your monitor",
     "quality": "Best image at 60+",
+}
+CFG_GROUP_TITLES = {
+    "cpu_threading": "CPU Threading",
+    "render_pipeline": "Render Pipeline",
+    "frame_pacing": "Frame Pacing",
+    "post_process": "Post Processing",
+    "world_render": "World Render",
+    "overlay": "Overlay",
+    "misc": "Misc",
 }
 
 
@@ -126,9 +135,15 @@ class MainWindow(QMainWindow):
         self.setting_overrides: dict = prefs.load_setting_overrides()
         self._setting_editors: dict[str, QWidget] = {}
         self._setting_rows: dict[str, int] = {}
+        self._settings_row_kind: list[tuple[str, str]] = []
+        self._settings_collapsed: set[str] = set()
+        self._settings_filter: str = ""
         self.cfg_overrides: dict = prefs.load_cfg_overrides()
         self._cfg_editors: dict[str, QWidget] = {}
         self._cfg_rows: dict[str, int] = {}
+        self._cfg_row_kind: list[tuple[str, str]] = []
+        self._cfg_collapsed: set[str] = set()
+        self._cfg_filter: str = ""
         self.update_info: update.UpdateInfo | None = None
         self._loading = True
 
@@ -353,6 +368,38 @@ class MainWindow(QMainWindow):
         return panel
 
 
+    def _build_table_nav_row(
+        self, *, search_slot, jump_slot, expand_slot, collapse_slot,
+        search_attr: str, jump_attr: str, placeholder: str,
+    ) -> QHBoxLayout:
+        """Search box + category jump combo + expand/collapse, shared by the
+        settings and User.cfg tabs so both scale the same way as the tables grow."""
+        row = QHBoxLayout()
+        row.setContentsMargins(6, 0, 6, 0)
+        row.setSpacing(8)
+
+        search = QLineEdit()
+        search.setPlaceholderText(placeholder)
+        search.setClearButtonEnabled(True)
+        search.textChanged.connect(search_slot)
+        setattr(self, search_attr, search)
+        row.addWidget(search, 1)
+
+        jump = _NoScrollComboBox()
+        jump.addItem("Jump to category...")
+        jump.currentIndexChanged.connect(jump_slot)
+        setattr(self, jump_attr, jump)
+        row.addWidget(jump)
+
+        expand_button = QPushButton("Expand all")
+        expand_button.clicked.connect(expand_slot)
+        row.addWidget(expand_button)
+
+        collapse_button = QPushButton("Collapse all")
+        collapse_button.clicked.connect(collapse_slot)
+        row.addWidget(collapse_button)
+        return row
+
     def _build_settings_tab(self) -> QWidget:
         container = QWidget()
         layout = QVBoxLayout(container)
@@ -363,7 +410,7 @@ class MainWindow(QMainWindow):
         row.setContentsMargins(6, 0, 6, 0)
         self.override_note = dim(
             "Every value here is editable. Change one and the prediction, the frame cap "
-            "and the comparison all update to match. Click any row to see a full description."
+            "and the comparison all update to match. Click a category to collapse it."
         )
         row.addWidget(self.override_note, 1)
 
@@ -371,6 +418,15 @@ class MainWindow(QMainWindow):
         self.reset_overrides_button.clicked.connect(self.reset_all_overrides)
         row.addWidget(self.reset_overrides_button)
         layout.addLayout(row)
+
+        layout.addLayout(self._build_table_nav_row(
+            search_slot=self._on_settings_search_changed,
+            jump_slot=self._on_settings_jump,
+            expand_slot=lambda: self._set_all_settings_collapsed(False),
+            collapse_slot=lambda: self._set_all_settings_collapsed(True),
+            search_attr="settings_search", jump_attr="settings_jump",
+            placeholder="Search settings by name or category...",
+        ))
 
         # Splitter: table on top, detail pane below.
         splitter = QSplitter(Qt.Vertical)
@@ -420,6 +476,15 @@ class MainWindow(QMainWindow):
         self.reset_cfg_overrides_button.clicked.connect(self.reset_all_cfg_overrides)
         row.addWidget(self.reset_cfg_overrides_button)
         commands_layout.addLayout(row)
+
+        commands_layout.addLayout(self._build_table_nav_row(
+            search_slot=self._on_cfg_search_changed,
+            jump_slot=self._on_cfg_jump,
+            expand_slot=lambda: self._set_all_cfg_collapsed(False),
+            collapse_slot=lambda: self._set_all_cfg_collapsed(True),
+            search_attr="cfg_search", jump_attr="cfg_jump",
+            placeholder="Search commands by key or category...",
+        ))
 
         splitter = QSplitter(Qt.Vertical)
         splitter.setChildrenCollapsible(False)
@@ -487,7 +552,8 @@ class MainWindow(QMainWindow):
         """Fill the table, creating each row's editor once and updating it after.
 
         Rebuilding the table would destroy the widget whose signal we are inside,
-        so rows are created on the first pass and only their values change later.
+        so rows - including category header rows - are laid out on the first
+        pass; later calls only update values and row visibility (collapse/search).
         """
         rec = self.rec
         assert rec is not None
@@ -495,14 +561,35 @@ class MainWindow(QMainWindow):
         building = table.rowCount() == 0
 
         if building:
-            table.setRowCount(len(rec.settings))
+            groups: dict[str, list] = {}
+            for choice in rec.settings:
+                groups.setdefault(choice.menu, []).append(choice)
+
+            row_kind: list[tuple[str, str]] = []
+            for menu, choices in groups.items():
+                row_kind.append(("header", menu))
+                for choice in choices:
+                    row_kind.append(("choice", choice.setting_id))
+            self._settings_row_kind = row_kind
+
+            table.setRowCount(len(row_kind))
             table.currentCellChanged.connect(self._on_setting_row_changed)
+            table.cellClicked.connect(self._on_settings_cell_clicked)
 
-        for row, choice in enumerate(rec.settings):
-            setting = self.db.setting(choice.setting_id) or {}
-            self._setting_rows[choice.setting_id] = row
+            self.settings_jump.blockSignals(True)
+            self.settings_jump.clear()
+            self.settings_jump.addItem("Jump to category...")
+            for menu in groups:
+                self.settings_jump.addItem(menu)
+            self.settings_jump.blockSignals(False)
 
-            if building:
+            for row, (kind, key) in enumerate(row_kind):
+                if kind == "header":
+                    self._make_header_row(table, row, span=4)
+                    continue
+
+                choice = next(c for c in rec.settings if c.setting_id == key)
+                setting = self.db.setting(choice.setting_id) or {}
                 name = QTableWidgetItem(choice.label)
                 name.setToolTip(choice.menu)
                 table.setItem(row, 0, name)
@@ -524,9 +611,26 @@ class MainWindow(QMainWindow):
 
                 table.setItem(row, 3, QTableWidgetItem(""))
 
+        choice_by_id = {c.setting_id: c for c in rec.settings}
+
+        for row, (kind, key) in enumerate(self._settings_row_kind):
+            if kind == "header":
+                continue
+            choice = choice_by_id.get(key)
+            if choice is None:
+                continue
+            self._setting_rows[choice.setting_id] = row
+            setting = self.db.setting(choice.setting_id) or {}
+            unverified = setting.get("confidence") == "unverified"
+
             name_item = table.item(row, 0)
             if name_item is not None:
-                name_item.setText(("◆ " if choice.overridden else "") + choice.label)
+                label = choice.label + (" (unverified)" if unverified else "")
+                name_item.setText(("◆ " if choice.overridden else "") + label)
+                name_item.setToolTip(
+                    choice.menu + ("\nUnverified: a plausible addition, not confirmed against "
+                                   "a real BF6 profile - see the detail pane." if unverified else "")
+                )
                 if choice.overridden:
                     font = QFont()
                     font.setBold(True)
@@ -535,7 +639,7 @@ class MainWindow(QMainWindow):
                     name_item.setBackground(_OVERRIDE_BG)
                 else:
                     name_item.setFont(QFont())
-                    name_item.setForeground(_NORMAL_FG)
+                    name_item.setForeground(QColor(theme.TEXT_DIM) if unverified else _NORMAL_FG)
                     name_item.setBackground(QColor())  # transparent / default
 
             editor = self._setting_editors.get(choice.setting_id)
@@ -601,8 +705,139 @@ class MainWindow(QMainWindow):
         self.reset_overrides_button.setEnabled(bool(count))
         self.tabs.setTabText(1, f"In-game settings ({count} changed)" if count
                              else "In-game settings")
+        self._update_settings_header_texts()
+        self._apply_settings_filter()
         # Let each row grow to fit its content (Why column can wrap).
         self.settings_table.resizeRowsToContents()
+
+    def _make_header_row(self, table: QTableWidget, row: int, span: int) -> None:
+        """A full-width, clickable category row. Click toggles collapse via
+        the table's cellClicked handler; text/arrow is set separately since it
+        depends on collapse state and per-category counts, which change."""
+        item = QTableWidgetItem("")
+        item.setFlags(Qt.ItemIsEnabled)
+        font = QFont()
+        font.setBold(True)
+        item.setFont(font)
+        item.setForeground(QColor(theme.TEXT))
+        item.setBackground(QColor(theme.BG_RAISED))
+        table.setItem(row, 0, item)
+        table.setSpan(row, 0, 1, span)
+        table.setRowHeight(row, 28)
+
+    # -- category collapse / search (in-game settings) ----------------------
+
+    def _update_settings_header_texts(self) -> None:
+        if self.rec is None:
+            return
+        counts: dict[str, int] = {}
+        for choice in self.rec.settings:
+            counts[choice.menu] = counts.get(choice.menu, 0) + 1
+        table = self.settings_table
+        for row, (kind, key) in enumerate(self._settings_row_kind):
+            if kind != "header":
+                continue
+            item = table.item(row, 0)
+            if item is None:
+                continue
+            arrow = "▸" if key in self._settings_collapsed else "▾"
+            item.setText(f"{arrow}  {key}  ({counts.get(key, 0)})")
+
+    def _apply_settings_filter(self) -> None:
+        table = self.settings_table
+        text = self._settings_filter.strip().lower()
+        choice_by_id = {c.setting_id: c for c in (self.rec.settings if self.rec else [])}
+
+        group_has_match: dict[str, bool] = {}
+        row_matches: dict[int, bool] = {}
+        current_group = ""
+        for row, (kind, key) in enumerate(self._settings_row_kind):
+            if kind == "header":
+                current_group = key
+                group_has_match.setdefault(current_group, False)
+                continue
+            choice = choice_by_id.get(key)
+            haystack = f"{choice.label} {current_group}".lower() if choice else key.lower()
+            is_match = not text or text in haystack
+            row_matches[row] = is_match
+            if is_match:
+                group_has_match[current_group] = True
+
+        current_group = ""
+        for row, (kind, key) in enumerate(self._settings_row_kind):
+            if kind == "header":
+                current_group = key
+                table.setRowHidden(row, bool(text) and not group_has_match.get(current_group, False))
+                continue
+            collapsed = not text and current_group in self._settings_collapsed
+            table.setRowHidden(row, collapsed or not row_matches.get(row, True))
+
+    def _on_settings_search_changed(self, text: str) -> None:
+        self._settings_filter = text
+        self._apply_settings_filter()
+
+    def _on_settings_cell_clicked(self, row: int, _col: int) -> None:
+        if row < 0 or row >= len(self._settings_row_kind):
+            return
+        kind, key = self._settings_row_kind[row]
+        if kind != "header":
+            return
+        if key in self._settings_collapsed:
+            self._settings_collapsed.discard(key)
+        else:
+            self._settings_collapsed.add(key)
+        self._update_settings_header_texts()
+        self._apply_settings_filter()
+
+    def _set_all_settings_collapsed(self, collapsed: bool) -> None:
+        menus = {key for kind, key in self._settings_row_kind if kind == "header"}
+        if collapsed:
+            self._settings_collapsed |= menus
+        else:
+            self._settings_collapsed -= menus
+        self._update_settings_header_texts()
+        self._apply_settings_filter()
+
+    def _on_settings_jump(self, index: int) -> None:
+        if index <= 0:
+            return
+        menu = self.settings_jump.itemText(index)
+        self._reveal_settings_group(menu)
+        self.settings_jump.setCurrentIndex(0)
+
+    def _reveal_settings_group(self, menu: str) -> None:
+        self._settings_collapsed.discard(menu)
+        self._update_settings_header_texts()
+        self._apply_settings_filter()
+        table = self.settings_table
+        for row, (kind, key) in enumerate(self._settings_row_kind):
+            if kind == "header" and key == menu:
+                item = table.item(row, 0)
+                if item is not None:
+                    table.scrollToItem(item)
+                break
+
+    def _reveal_settings_row(self, setting_id: str) -> None:
+        row = self._setting_rows.get(setting_id)
+        if row is None or row >= len(self._settings_row_kind):
+            return
+        group = ""
+        for kind, key in reversed(self._settings_row_kind[: row + 1]):
+            if kind == "header":
+                group = key
+                break
+        if group:
+            self._settings_collapsed.discard(group)
+        self._update_settings_header_texts()
+        if self._settings_filter:
+            self.settings_search.clear()  # triggers _apply_settings_filter itself
+        else:
+            self._apply_settings_filter()
+        table = self.settings_table
+        table.setCurrentCell(row, 0)
+        item = table.item(row, 0)
+        if item is not None:
+            table.scrollToItem(item)
 
     # -- override handling -------------------------------------------------
 
@@ -691,23 +926,47 @@ class MainWindow(QMainWindow):
         return None
 
     def _sync_cfg_table(self) -> None:
-        """Same build-once-then-update-values approach as _sync_settings_table."""
+        """Same build-once-then-update-values, grouped-by-category approach as
+        _sync_settings_table (see its docstring)."""
         rec = self.rec
         assert rec is not None
         table = self.cfg_table
         building = table.rowCount() == 0
 
-        rows = [line for line in rec.cfg if line.key is not None]
+        lines_by_key = {line.key: line for line in rec.cfg if line.key is not None}
 
         if building:
-            table.setRowCount(len(rows))
+            groups: dict[str, list] = {}
+            for line in lines_by_key.values():
+                command = self.db.command(line.key) or {}
+                group = command.get("group", "misc")
+                groups.setdefault(group, []).append(line)
+
+            row_kind: list[tuple[str, str]] = []
+            for group, lines in groups.items():
+                row_kind.append(("header", group))
+                for line in lines:
+                    row_kind.append(("line", line.key))
+            self._cfg_row_kind = row_kind
+
+            table.setRowCount(len(row_kind))
             table.currentCellChanged.connect(self._on_cfg_row_changed)
+            table.cellClicked.connect(self._on_cfg_cell_clicked)
 
-        for row, line in enumerate(rows):
-            command = self.db.command(line.key) or {}
-            self._cfg_rows[line.key] = row
+            self.cfg_jump.blockSignals(True)
+            self.cfg_jump.clear()
+            self.cfg_jump.addItem("Jump to category...")
+            for group in groups:
+                self.cfg_jump.addItem(CFG_GROUP_TITLES.get(group, group))
+            self.cfg_jump.blockSignals(False)
 
-            if building:
+            for row, (kind, key) in enumerate(row_kind):
+                if kind == "header":
+                    self._make_header_row(table, row, span=4)
+                    continue
+
+                line = lines_by_key[key]
+                command = self.db.command(line.key) or {}
                 name = QTableWidgetItem(line.key)
                 name.setToolTip(command.get("summary", ""))
                 table.setItem(row, 0, name)
@@ -737,6 +996,15 @@ class MainWindow(QMainWindow):
                     table.setCellWidget(row, 2, reset)
 
                 table.setItem(row, 3, QTableWidgetItem(""))
+
+        for row, (kind, key) in enumerate(self._cfg_row_kind):
+            if kind == "header":
+                continue
+            line = lines_by_key.get(key)
+            if line is None:
+                continue
+            command = self.db.command(line.key) or {}
+            self._cfg_rows[line.key] = row
 
             name_item = table.item(row, 0)
             if name_item is not None:
@@ -813,14 +1081,108 @@ class MainWindow(QMainWindow):
         count = len(rec.cfg_overrides)
         self.reset_cfg_overrides_button.setEnabled(bool(count))
         self.tabs.setTabText(2, f"User.cfg ({count} changed)" if count else "User.cfg")
+        self._update_cfg_header_texts()
+        self._apply_cfg_filter()
         self.cfg_table.resizeRowsToContents()
+
+    # -- category collapse / search (User.cfg) -------------------------------
+
+    def _update_cfg_header_texts(self) -> None:
+        if self.rec is None:
+            return
+        counts: dict[str, int] = {}
+        for line in self.rec.cfg:
+            if line.key is None:
+                continue
+            command = self.db.command(line.key) or {}
+            group = command.get("group", "misc")
+            counts[group] = counts.get(group, 0) + 1
+        table = self.cfg_table
+        for row, (kind, key) in enumerate(self._cfg_row_kind):
+            if kind != "header":
+                continue
+            item = table.item(row, 0)
+            if item is None:
+                continue
+            arrow = "▸" if key in self._cfg_collapsed else "▾"
+            title = CFG_GROUP_TITLES.get(key, key)
+            item.setText(f"{arrow}  {title}  ({counts.get(key, 0)})")
+
+    def _apply_cfg_filter(self) -> None:
+        table = self.cfg_table
+        text = self._cfg_filter.strip().lower()
+        lines_by_key = {line.key: line for line in (self.rec.cfg if self.rec else []) if line.key}
+
+        group_has_match: dict[str, bool] = {}
+        row_matches: dict[int, bool] = {}
+        current_group = ""
+        for row, (kind, key) in enumerate(self._cfg_row_kind):
+            if kind == "header":
+                current_group = key
+                group_has_match.setdefault(current_group, False)
+                continue
+            title = CFG_GROUP_TITLES.get(current_group, current_group)
+            haystack = f"{key} {title}".lower()
+            is_match = not text or text in haystack
+            row_matches[row] = is_match
+            if is_match:
+                group_has_match[current_group] = True
+
+        current_group = ""
+        for row, (kind, key) in enumerate(self._cfg_row_kind):
+            if kind == "header":
+                current_group = key
+                table.setRowHidden(row, bool(text) and not group_has_match.get(current_group, False))
+                continue
+            collapsed = not text and current_group in self._cfg_collapsed
+            table.setRowHidden(row, collapsed or not row_matches.get(row, True))
+
+    def _on_cfg_search_changed(self, text: str) -> None:
+        self._cfg_filter = text
+        self._apply_cfg_filter()
+
+    def _on_cfg_cell_clicked(self, row: int, _col: int) -> None:
+        if row < 0 or row >= len(self._cfg_row_kind):
+            return
+        kind, key = self._cfg_row_kind[row]
+        if kind != "header":
+            return
+        if key in self._cfg_collapsed:
+            self._cfg_collapsed.discard(key)
+        else:
+            self._cfg_collapsed.add(key)
+        self._update_cfg_header_texts()
+        self._apply_cfg_filter()
+
+    def _set_all_cfg_collapsed(self, collapsed: bool) -> None:
+        groups = {key for kind, key in self._cfg_row_kind if kind == "header"}
+        if collapsed:
+            self._cfg_collapsed |= groups
+        else:
+            self._cfg_collapsed -= groups
+        self._update_cfg_header_texts()
+        self._apply_cfg_filter()
+
+    def _on_cfg_jump(self, index: int) -> None:
+        if index <= 0:
+            return
+        title = self.cfg_jump.itemText(index)
+        group = next((g for g in CFG_GROUP_TITLES if CFG_GROUP_TITLES.get(g, g) == title), title)
+        self._cfg_collapsed.discard(group)
+        self._update_cfg_header_texts()
+        self._apply_cfg_filter()
+        table = self.cfg_table
+        for row, (kind, key) in enumerate(self._cfg_row_kind):
+            if kind == "header" and key == group:
+                item = table.item(row, 0)
+                if item is not None:
+                    table.scrollToItem(item)
+                break
+        self.cfg_jump.setCurrentIndex(0)
 
     def _goto_frame_limit(self) -> None:
         self.tabs.setCurrentIndex(1)
-        row = self._setting_rows.get("frame_limit")
-        if row is not None:
-            self.settings_table.setCurrentCell(row, 0)
-            self.settings_table.scrollToItem(self.settings_table.item(row, 0))
+        self._reveal_settings_row("frame_limit")
 
     def _on_cfg_editor_changed(self, key: str) -> None:
         if self._loading:
@@ -862,14 +1224,17 @@ class MainWindow(QMainWindow):
         self.refresh()
 
     def _on_cfg_row_changed(self, row: int, _col: int, _prev_row: int, _prev_col: int) -> None:
-        if self.rec is None:
+        if self.rec is None or row < 0 or row >= len(self._cfg_row_kind):
             self.cfg_detail.clear()
             return
-        rows = [line for line in self.rec.cfg if line.key is not None]
-        if row < 0 or row >= len(rows):
+        kind, key = self._cfg_row_kind[row]
+        if kind != "line":
             self.cfg_detail.clear()
             return
-        line = rows[row]
+        line = next((l for l in self.rec.cfg if l.key == key), None)
+        if line is None:
+            self.cfg_detail.clear()
+            return
         command = self.db.command(line.key)
         self._update_cfg_detail(line, command)
 
@@ -928,10 +1293,17 @@ class MainWindow(QMainWindow):
     def _on_setting_row_changed(
         self, row: int, _col: int, _prev_row: int, _prev_col: int
     ) -> None:
-        if self.rec is None or row < 0 or row >= len(self.rec.settings):
+        if self.rec is None or row < 0 or row >= len(self._settings_row_kind):
             self.setting_detail.clear()
             return
-        choice = self.rec.settings[row]
+        kind, key = self._settings_row_kind[row]
+        if kind != "choice":
+            self.setting_detail.clear()
+            return
+        choice = next((c for c in self.rec.settings if c.setting_id == key), None)
+        if choice is None:
+            self.setting_detail.clear()
+            return
         setting = self.db.setting(choice.setting_id)
         self._update_setting_detail(choice, setting)
 
@@ -963,6 +1335,15 @@ class MainWindow(QMainWindow):
             f"<b style='font-size:14px'>{choice.label}</b>"
             f"&nbsp;&nbsp;<span style='color:{theme.TEXT_DIM}'>{menu}</span>"
         )
+        if setting.get("confidence") == "unverified":
+            parts.append(
+                f"<br><span style='color:{theme.WARN}; font-size:11px'>UNVERIFIED —</span>"
+                f"<span style='color:{theme.TEXT_DIM}; font-size:11px'> a plausible addition "
+                "based on common Frostbite/FPS conventions, not confirmed against a real BF6 "
+                "profile or menu. It has no profile key on purpose, so it is never written "
+                "automatically - set it by hand and treat the value below as a starting "
+                "point.</span>"
+            )
 
         cost_bits = []
         if gpu_cost >= 1:
