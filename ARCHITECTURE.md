@@ -338,6 +338,32 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-07 (13) — The elevation test itself only worked on Windows
+The previous commit's two new tests passed locally (this machine is
+Windows) but **failed CI's "Tests (Linux)" job**: `OSError(22, "...", None,
+740)` (the 4-arg constructor form) only populates `.winerror` on real
+Windows OS failures - passing it manually on Linux is accepted (no
+TypeError) but silently does *not* set `.winerror`, so the test's fake
+error fell through to the plain fallback message instead of the
+elevation-specific one, and the regex match failed.
+- Fixed by setting `.winerror` as a plain attribute assignment after
+  construction (`exc = OSError(message); exc.winerror = 740`) instead of
+  via the constructor's positional args - confirmed by direct experiment
+  that this works identically on any platform, since it doesn't go through
+  OS-specific population logic at all, just a normal instance attribute.
+- **Process note**: this is caught CI doing its job, not a near-miss -
+  every prior commit this session ran `pytest tests -q` locally before
+  pushing and that's real coverage, but "passes on this machine" was never
+  sufficient for anything touching a platform-conditional stdlib feature
+  like `OSError.winerror`, and this repo's CI runs the test suite on Linux
+  specifically to catch exactly this class of thing before the Windows
+  build job even starts (see `build.yml`'s `test` job gating `build`).
+  Worth remembering for any future Windows-specific error-code handling:
+  don't trust a constructor argument to set a platform-only attribute:
+  set it directly, or skip the test outside Windows.
+- 185 tests unchanged in count, both fixed to pass for the right reason on
+  every platform. Followed the standing build/release workflow.
+
 ### 2026-09-07 (12) — First real-world benchmark error: elevation required
 User's first actual capture attempt (against a real PresentMon install)
 failed with `WinError 740: The requested operation requires elevation`.
