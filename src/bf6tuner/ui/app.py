@@ -148,16 +148,19 @@ class BenchmarkWorker(QThread):
     finished_ok = Signal(object)
     failed = Signal(str)
 
-    def __init__(self, exe: Path, process_name: str, output_csv: Path, duration_s: int) -> None:
+    def __init__(self, exe: Path, process_name: str, output_csv: Path, duration_s: int,
+                 pid: int | None = None) -> None:
         super().__init__()
         self.exe = exe
         self.process_name = process_name
         self.output_csv = output_csv
         self.duration_s = duration_s
+        self.pid = pid
 
     def run(self) -> None:
         try:
-            benchmark.run_capture(self.exe, self.process_name, self.output_csv, self.duration_s)
+            benchmark.run_capture(self.exe, self.process_name, self.output_csv, self.duration_s,
+                                  pid=self.pid)
             stats = benchmark.parse_csv(self.output_csv)
         except benchmark.BenchmarkError as exc:
             self.failed.emit(str(exc))
@@ -779,6 +782,7 @@ class MainWindow(QMainWindow):
             return
 
         process_name = self.game.executable.name if self.game.executable else "bf6.exe"
+        pid = paths.find_running_game_pid()
         duration = self.benchmark_duration.value()
         output_csv = benchmark.benchmark_root() / "_last_capture.csv"
 
@@ -795,7 +799,9 @@ class MainWindow(QMainWindow):
         self._benchmark_timer.timeout.connect(self._on_benchmark_tick)
         self._benchmark_timer.start()
 
-        self._benchmark_worker = BenchmarkWorker(self._presentmon_path, process_name, output_csv, duration)
+        self._benchmark_worker = BenchmarkWorker(
+            self._presentmon_path, process_name, output_csv, duration, pid=pid
+        )
         self._benchmark_worker.finished_ok.connect(self._on_benchmark_finished)
         self._benchmark_worker.failed.connect(self._on_benchmark_failed)
         self._benchmark_worker.start()

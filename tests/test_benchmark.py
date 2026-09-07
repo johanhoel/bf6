@@ -114,6 +114,34 @@ def test_build_args_respects_a_custom_template(tmp_path):
     assert args == [str(exe), "-p", "bf6.exe", "-o", str(tmp_path / "out.csv"), "-t", "30"]
 
 
+def test_build_args_prefers_pid_targeting_when_a_pid_is_given(tmp_path):
+    """PresentMon's own docs say --process_name needs elevation to resolve
+    short-lived/other-account processes; a known PID sidesteps that."""
+    exe = tmp_path / "PresentMon.exe"
+    args = benchmark.build_args(exe, "bf6.exe", tmp_path / "out.csv", 30, pid=4321)
+    assert "--process_id" in args
+    assert "4321" in args
+    assert "--process_name" not in args
+    assert "bf6.exe" not in args
+
+
+def test_build_args_falls_back_to_process_name_without_a_pid(tmp_path):
+    exe = tmp_path / "PresentMon.exe"
+    args = benchmark.build_args(exe, "bf6.exe", tmp_path / "out.csv", 30, pid=None)
+    assert "--process_name" in args
+    assert "bf6.exe" in args
+    assert "--process_id" not in args
+
+
+def test_build_args_an_explicit_template_overrides_pid_preference(tmp_path):
+    exe = tmp_path / "PresentMon.exe"
+    args = benchmark.build_args(
+        exe, "bf6.exe", tmp_path / "out.csv", 30, pid=4321,
+        template="-p {process} -o {output}",
+    )
+    assert args == [str(exe), "-p", "bf6.exe", "-o", str(tmp_path / "out.csv")]
+
+
 # -- run_capture error handling (mocked subprocess) --------------------------
 
 def test_run_capture_raises_on_nonzero_exit(tmp_path, monkeypatch):
@@ -121,6 +149,23 @@ def test_run_capture_raises_on_nonzero_exit(tmp_path, monkeypatch):
         return subprocess.CompletedProcess(a, returncode=1, stdout="", stderr="bad flag")
     monkeypatch.setattr(subprocess, "run", fake_run)
     with pytest.raises(benchmark.BenchmarkError, match="bad flag"):
+        benchmark.run_capture(tmp_path / "PresentMon.exe", "bf6.exe", tmp_path / "out.csv", 5)
+
+
+def test_run_capture_explains_presentmons_own_elevation_requirement(tmp_path, monkeypatch):
+    """Verbatim (trimmed) message from a real capture attempt: even the
+    standalone console tool refuses to trace a process by name without
+    elevation - a distinct failure from the WinError 740 case above, which
+    is about launching PresentMon itself, not what it needs once running."""
+    presentmon_stderr = (
+        "warning: PresentMon requires elevated privilege in order to query processes "
+        "that are\n    short-running or started on another account. ...\n"
+        "error: failed to start trace session: access denied.\n"
+    )
+    def fake_run(*a, **k):
+        return subprocess.CompletedProcess(a, returncode=6, stdout="", stderr=presentmon_stderr)
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(benchmark.BenchmarkError, match="Run as administrator"):
         benchmark.run_capture(tmp_path / "PresentMon.exe", "bf6.exe", tmp_path / "out.csv", 5)
 
 

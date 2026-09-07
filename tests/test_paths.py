@@ -8,6 +8,7 @@ lookup missed.
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -211,3 +212,42 @@ def test_corrupt_profiles_file_is_ignored(tmp_path, monkeypatch):
     directory.mkdir()
     (directory / "profiles.json").write_text("{ not json")
     assert prefs.load_profiles() == {}
+
+
+# -- find_running_game_pid ----------------------------------------------------
+# IS_WINDOWS is monkeypatched rather than relying on the actual platform, so
+# these run the same way in CI (Linux) as on a real Windows machine.
+
+def test_find_running_game_pid_parses_tasklist_csv(monkeypatch):
+    monkeypatch.setattr(paths, "IS_WINDOWS", True)
+    listing = (
+        '"notepad.exe","999","Console","1","10 K"\r\n'
+        '"bf6.exe","12345","Console","1","500,000 K"\r\n'
+    )
+    monkeypatch.setattr(
+        subprocess, "run",
+        lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout=listing, stderr=""),
+    )
+    assert paths.find_running_game_pid() == 12345
+
+
+def test_find_running_game_pid_returns_none_when_not_found(monkeypatch):
+    monkeypatch.setattr(paths, "IS_WINDOWS", True)
+    monkeypatch.setattr(
+        subprocess, "run",
+        lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout='"notepad.exe","999"\r\n', stderr=""),
+    )
+    assert paths.find_running_game_pid() is None
+
+
+def test_find_running_game_pid_returns_none_off_windows(monkeypatch):
+    monkeypatch.setattr(paths, "IS_WINDOWS", False)
+    assert paths.find_running_game_pid() is None
+
+
+def test_find_running_game_pid_never_raises_on_a_broken_tasklist(monkeypatch):
+    monkeypatch.setattr(paths, "IS_WINDOWS", True)
+    def broken(*a, **k):
+        raise OSError("tasklist.exe not found")
+    monkeypatch.setattr(subprocess, "run", broken)
+    assert paths.find_running_game_pid() is None
