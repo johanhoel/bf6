@@ -261,6 +261,21 @@ comparison, with the pros and cons for every change. `--no-compare` omits it.
 `--allow-thread-overrides`, `--allow-frame-gen` and `--legacy` unlock the opt-in
 behaviour described above. `--help` lists everything.
 
+**If Windows won't run the built .exe at all** — Smart App Control (Windows
+11's stricter, less overridable successor to classic SmartScreen) can block a
+freshly-built, unsigned executable outright with no "Run anyway" option, and
+every build here has a fresh hash (see "About encrypted" above), so it never
+accumulates reputation. If you hit this and don't have a code-signing
+certificate, run it from source instead — Smart App Control evaluates
+standalone executables, not scripts interpreted by an already-trusted
+`python.exe`, so this sidesteps it entirely:
+
+```bat
+pip install -r requirements.txt
+run-from-source.bat                          REM GUI
+run-from-source.bat --preset competitive     REM CLI, same arguments as BF6Tuner-cli.exe
+```
+
 ## Where the files go
 
 | File | Location | Notes |

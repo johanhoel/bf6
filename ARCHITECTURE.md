@@ -338,6 +338,43 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-07 (17) — Smart App Control has no override on this machine at all
+User's build kept getting blocked, and this time "Unblock" (which only
+clears Mark-of-the-Web, unrelated to Smart App Control) didn't help either,
+and Windows Security's Protection History didn't show an actionable entry.
+Pulled the actual Smart App Control block event's structured data directly
+(`Get-WinEvent ... | .ToXml()` on `Microsoft-Windows-CodeIntegrity/Operational`
+event ID 3118) rather than keep guessing from the GUI:
+- Confirmed genuinely not malware (`DefenderThreatName` empty, as before).
+- `DefenderMadeCloudCall: false` looked like a possible smoking gun (cloud
+  reputation check requested but never completed) - checked
+  `Get-MpComputerStatus`/`Get-MpPreference` (MAPSReporting=2/Advanced,
+  connectivity to `wdcp.microsoft.com:443` succeeds) and cloud protection
+  is properly configured and reachable. So this isn't a fixable
+  misconfiguration - it's just confirming there's no reputation available
+  for a file that exists nowhere else, exactly as the original theory said.
+- **Conclusion, stated plainly**: on this machine, with Smart App Control
+  enforced and no code-signing certificate, there is no click-through
+  override for the compiled .exe. The two previously-given options (turn
+  off Smart App Control - one-way; or get a certificate) still stand, but
+  there's a third, better one for a personal dev machine that already has
+  Python: **run from source**. Smart App Control evaluates standalone
+  executables, not scripts interpreted by an already-trusted `python.exe`,
+  so this sidesteps the entire problem with no cert, no OS setting changes,
+  and no repeated prompts.
+- New `run-from-source.bat` (repo root): sets `PYTHONPATH` and runs
+  `python -m bf6tuner`, forwarding all arguments - `run-from-source.bat`
+  alone launches the GUI, `run-from-source.bat --preset competitive ...`
+  behaves like `BF6Tuner-cli.exe`. Verified directly (not just written and
+  assumed): ran it with `--preset competitive --print-cfg` and got a
+  correctly-rendered `User.cfg` against this machine's *real* detected
+  hardware (Ryzen 9850X3D / RTX 5090, matching the user's earlier
+  screenshots) - confirms real hardware detection, not the off-Windows
+  sample profile, and that argument forwarding works.
+- Documented in README's "Running it" section. No version bump - this
+  doesn't touch `src/bf6tuner/` or the built executable at all, so nothing
+  needed rebuilding/pulling via the standing workflow this time.
+
 ### 2026-09-07 (16) — Diagnosing blind: make targeting mode visible up front
 User tried the PID-targeting build (elevated BF6 Tuner, as before) and got
 the *identical* error message. Rather than guess again whether PID
