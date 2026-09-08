@@ -203,6 +203,7 @@ class MainWindow(QMainWindow):
         self._busy_count = 0
         self._presentmon_path: Path | None = None
         self._has_persisted_target = False
+        self._row_height_cache: int | None = None
         self._loading = True
 
         self.setWindowTitle(f"{APP_NAME} {__version__} - Battlefield 6 configurator")
@@ -675,13 +676,11 @@ class MainWindow(QMainWindow):
         self.settings_table = self._make_table(
             ["Setting", "Value", "", "Why"], [250, 200, 155, -1]
         )
-        self.settings_table.verticalHeader().setDefaultSectionSize(30)
         self.tabs.addTab(self._build_settings_tab(), "In-game settings")
 
         self.cfg_table = self._make_table(
             ["Command", "Value", "", "Why"], [260, 160, 155, -1]
         )
-        self.cfg_table.verticalHeader().setDefaultSectionSize(29)
         self.tabs.addTab(self._build_cfg_tab(), "User.cfg")
 
         self.warnings_area = self._make_scroll()
@@ -1290,7 +1289,7 @@ class MainWindow(QMainWindow):
         item.setBackground(QColor(theme.BG_RAISED))
         table.setItem(row, 0, item)
         table.setSpan(row, 0, 1, span)
-        table.setRowHeight(row, 29)
+        table.setRowHeight(row, self._editor_row_height())
 
     # -- category collapse / search (in-game settings) ----------------------
 
@@ -1963,10 +1962,37 @@ class MainWindow(QMainWindow):
 
         self.setting_detail.setHtml("".join(parts))
 
+    def _editor_row_height(self) -> int:
+        """The row height every table with combo/spin-box cell editors
+        shares, measured from real widget metrics on this machine rather
+        than a hand-picked constant.
+
+        Font size and DPI scaling vary enough across machines that a
+        constant tuned by eye on one screen has repeatedly turned out too
+        tight on another - this is at least the fourth round of exactly
+        this bug (see ARCHITECTURE.md's work log). Measuring `sizeHint()`
+        on throwaway widgets, built with the app's real stylesheet already
+        applied, makes this self-correcting for whatever font/DPI the
+        machine it's actually running on has, instead of guessing again.
+        """
+        if self._row_height_cache is None:
+            combo = _NoScrollComboBox()
+            combo.addItem("Sample")
+            spin = _NoScrollSpinBox()
+            spin.setSuffix(" %")
+            tallest = max(combo.sizeHint().height(), spin.sizeHint().height())
+            # A few px of headroom beyond the tallest editor's own preferred
+            # size - Qt's sizeHint is already generous, but this has been
+            # wrong in the too-tight direction every time before, never the
+            # too-loose one, so the margin is deliberately on that side.
+            self._row_height_cache = max(tallest + 8, 32)
+        return self._row_height_cache
+
     def _make_table(self, headers: list[str], widths: list[int]) -> QTableWidget:
         table = QTableWidget(0, len(headers))
         table.setHorizontalHeaderLabels(headers)
         table.verticalHeader().setVisible(False)
+        table.verticalHeader().setDefaultSectionSize(self._editor_row_height())
         table.setAlternatingRowColors(True)
         # Word-wrap + resizeRowsToContents() (the previous approach) computes
         # each row's height against the stretch column's width at the moment
