@@ -16,9 +16,10 @@ from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QAction, QColor, QFont, QIcon, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QAbstractSpinBox, QApplication, QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox,
-    QFileDialog, QFrame, QGridLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow,
-    QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSpinBox,
-    QSplitter, QStyle, QTableWidget, QTableWidgetItem, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
+    QFileDialog, QFrame, QGraphicsDropShadowEffect, QGridLayout, QHBoxLayout, QHeaderView, QLabel,
+    QLineEdit, QMainWindow, QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QScrollArea,
+    QSizePolicy, QSpinBox, QSplitter, QStyle, QTableWidget, QTableWidgetItem, QTabWidget, QTextEdit,
+    QVBoxLayout, QWidget,
 )
 
 from .. import APP_NAME, __version__
@@ -70,6 +71,14 @@ CFG_GROUP_TITLES = {
 def card(title: str) -> tuple[QFrame, QVBoxLayout]:
     frame = QFrame()
     frame.setObjectName("Card")
+    # A subtle drop shadow gives the card real elevation off the window
+    # background - QSS alone has no box-shadow equivalent, so this is the
+    # one bit of styling that has to be done in Python rather than theme.py.
+    shadow = QGraphicsDropShadowEffect(frame)
+    shadow.setBlurRadius(24)
+    shadow.setOffset(0, 3)
+    shadow.setColor(QColor(0, 0, 0, 110))
+    frame.setGraphicsEffect(shadow)
     layout = QVBoxLayout(frame)
     layout.setContentsMargins(18, 16, 18, 18)
     layout.setSpacing(10)
