@@ -366,6 +366,50 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-08 (30) — Preset buttons and the profile combo are now mutually exclusive
+
+Immediate follow-up to entry (29). User: when a custom profile is active,
+none of the 4 preset buttons (Esports/Competitive/Balanced/Quality) should
+show as selected - just the profile. Before this, `load_selected_profile`
+force-checked one of the 4 buttons *in addition to* selecting the profile
+in the combo, so both looked "active" at once - misleading, since the
+active configuration was the profile's (preset + its own overrides), not a
+clean preset.
+
+Real fix, not cosmetic: introduced `self._active_preset` as the single
+source of truth for which preset backs the current recommendation, read by
+`current_target()` instead of `PRESETS[self.preset_group.checkedId()]`.
+This was load-bearing, not optional - `checkedId()` returns `-1` whenever
+no preset button is checked (i.e. whenever a profile is shown active), and
+`PRESETS[-1]` silently wraps to `"quality"` (Python negative indexing) -
+so making "no button checked" a real, reachable UI state without this
+would have been a live bug, not just a display quirk.
+
+- `_on_preset` (user clicks a preset button directly): updates
+  `_active_preset`, and clears the profile combo back to "- none selected -"
+  if one was shown - the two indicators are mutually exclusive from now on.
+- `load_selected_profile` / `save_profile_as`: set `_active_preset` from
+  the profile's data, then **uncheck** whichever preset button is
+  currently checked (`preset_group.checkedButton()`, `setChecked(False)`) -
+  confirmed this is safe with Qt's exclusive `QButtonGroup`: exclusivity
+  only prevents *multiple* buttons being checked at once, it does not force
+  one to stay checked when unchecked programmatically, so "zero checked"
+  is a real, stable state, not fought by the framework.
+- `delete_current_profile`: once no profile is competing for the indicator
+  anymore, re-checks `_active_preset`'s own button - the underlying preset
+  didn't change, only the profile label describing it disappeared.
+- `_collect_profile_data`, `_save_target`, `_apply_persisted_target`,
+  `_on_detected`'s first-launch closest-preset detection: all switched
+  from reading the button group to reading/writing `_active_preset`
+  directly, so every code path agrees on the one source of truth.
+- Verified: `from bf6tuner.ui import app` imports clean, all 203 tests pass
+  (no regressions; this is Qt-widget-layer state-machine logic with no new
+  pure-logic surface to unit test, same situation as entry (29)). **Not
+  verified interactively** - ask the user to load a profile and confirm no
+  preset button looks selected, then click a preset button and confirm the
+  profile combo clears, then delete the active profile and confirm the
+  right preset button re-highlights.
+
 ### 2026-09-08 (29) — Remember which named profile was last selected
 
 User: saved a named profile, loaded it, closed and reopened the app - the

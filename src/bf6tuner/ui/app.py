@@ -204,6 +204,14 @@ class MainWindow(QMainWindow):
         self._presentmon_path: Path | None = None
         self._has_persisted_target = False
         self._row_height_cache: int | None = None
+        # The single source of truth for which preset backs the current
+        # recommendation - NOT "whichever preset button is checked", because
+        # a custom profile in use highlights no preset button at all (see
+        # load_selected_profile) while still needing a concrete preset
+        # underneath for the engine to compute anything. Read this, never
+        # self.preset_group.checkedId() (which is -1, not a valid PRESETS
+        # index, whenever a profile is active).
+        self._active_preset = PRESETS[1]  # "competitive" - matches the default checked button
         self._loading = True
 
         self.setWindowTitle(f"{APP_NAME} {__version__} - Battlefield 6 configurator")
@@ -458,7 +466,7 @@ class MainWindow(QMainWindow):
         label = self.resolution_box.currentText()
         width, height = (int(part) for part in label.split("x", 1))
         data: dict = {
-            "preset": PRESETS[self.preset_group.checkedId()],
+            "preset": self._active_preset,
             "width": width, "height": height,
             "refresh_hz": self.refresh_box.value(),
         }
@@ -477,9 +485,14 @@ class MainWindow(QMainWindow):
         self._loading = True
         try:
             preset = data.get("preset")
-            preset_index = PRESETS.index(preset) if preset in PRESETS else 1
-            self.preset_group.button(preset_index).setChecked(True)
-            self.preset_blurb.setText(PRESET_BLURB[PRESETS[preset_index]])
+            self._active_preset = preset if preset in PRESETS else PRESETS[1]
+            self.preset_blurb.setText(PRESET_BLURB[self._active_preset])
+            # A loaded profile is shown active via the combo selection above,
+            # never via one of the 4 preset buttons - the two are mutually
+            # exclusive "what's active" indicators (see _on_preset).
+            checked_button = self.preset_group.checkedButton()
+            if checked_button is not None:
+                checked_button.setChecked(False)
 
             label = f"{data.get('width', 2560)}x{data.get('height', 1440)}"
             index = self.resolution_box.findText(label)
@@ -523,6 +536,11 @@ class MainWindow(QMainWindow):
                 return
         prefs.save_profile(name, self._collect_profile_data())
         self._reload_profile_combo(select=name)
+        # Now shown active via the combo, same as a Load - no preset button
+        # should also look selected (see _on_preset / load_selected_profile).
+        checked_button = self.preset_group.checkedButton()
+        if checked_button is not None:
+            checked_button.setChecked(False)
         self.statusBar().showMessage(f'Saved profile "{name}".')
 
     def update_current_profile(self) -> None:
@@ -544,6 +562,12 @@ class MainWindow(QMainWindow):
             return
         prefs.delete_profile(name)
         self._reload_profile_combo()
+        # No profile is competing for the "what's active" indicator anymore -
+        # the underlying preset (unchanged by deleting the profile) can show
+        # as selected again.
+        button = self.preset_group.button(PRESETS.index(self._active_preset))
+        if button is not None:
+            button.setChecked(True)
         self.statusBar().showMessage(f'Deleted profile "{name}".')
 
     def _build_sidebar(self) -> QWidget:
@@ -2194,6 +2218,7 @@ class MainWindow(QMainWindow):
         if not self._has_persisted_target:
             detected_preset = self._detect_closest_preset()
             if detected_preset is not None:
+                self._active_preset = detected_preset
                 button = self.preset_group.button(PRESETS.index(detected_preset))
                 if button is not None:
                     button.setChecked(True)
@@ -2262,14 +2287,24 @@ class MainWindow(QMainWindow):
     # -- recomputation -----------------------------------------------------
 
     def _on_preset(self, index: int) -> None:
+        # Qt has already visually checked this button (the user clicked it
+        # directly) - clicking one of the 4 built-in presets means a custom
+        # profile, if one was shown selected, no longer is: the two are
+        # mutually exclusive "what's active" indicators, never both at once.
+        self._active_preset = PRESETS[index]
         self.preset_blurb.setText(PRESET_BLURB[PRESETS[index]])
+        if self.profile_combo.currentIndex() != 0:
+            self.profile_combo.blockSignals(True)
+            self.profile_combo.setCurrentIndex(0)
+            self.profile_combo.blockSignals(False)
+            self._on_profile_combo_changed(0)
         self.refresh()
 
     def current_target(self) -> Target:
         label = self.resolution_box.currentText()
         width, height = (int(part) for part in label.split("x", 1))
         return Target(
-            preset=PRESETS[self.preset_group.checkedId()],
+            preset=self._active_preset,
             width=width, height=height,
             refresh_hz=self.refresh_box.value(),
             vrr=self.checkboxes["vrr"].isChecked(),
@@ -2298,28 +2333,41 @@ class MainWindow(QMainWindow):
         profile you loaded, with the combo still innocently showing its
         name, would be worse than showing no selection at all. Only
         restoring which name was last *picked* avoids that: it can never
-        claim more than "this was the last one you looked at."
+        claim more than "this was the last one you looked at." When a
+        profile name is restored, no preset button is highlighted either -
+        the two indicators are mutually exclusive (see `_on_preset`).
         """
         saved = prefs.load_target()
         self._has_persisted_target = bool(saved)
         if not saved:
             return
         preset = saved.get("preset")
+        profile_name = saved.get("profile")
+        has_profile = isinstance(profile_name, str) and bool(profile_name)
         if preset in PRESETS:
-            button = self.preset_group.button(PRESETS.index(preset))
-            if button is not None:
-                button.setChecked(True)
-                self.preset_blurb.setText(PRESET_BLURB[preset])
+            self._active_preset = preset
+            self.preset_blurb.setText(PRESET_BLURB[preset])
+            # A profile being active is mutually exclusive with a preset
+            # button looking selected (see _on_preset / load_selected_profile) -
+            # only highlight the button when nothing was last shown via the
+            # profile combo instead.
+            if has_profile:
+                checked_button = self.preset_group.checkedButton()
+                if checked_button is not None:
+                    checked_button.setChecked(False)
+            else:
+                button = self.preset_group.button(PRESETS.index(preset))
+                if button is not None:
+                    button.setChecked(True)
         for key, box in self.checkboxes.items():
             if isinstance(saved.get(key), bool):
                 box.setChecked(saved[key])
-        profile_name = saved.get("profile")
-        if isinstance(profile_name, str) and profile_name:
+        if has_profile:
             self._reload_profile_combo(select=profile_name)
 
     def _save_target(self) -> None:
         values: dict[str, object] = {
-            "preset": PRESETS[self.preset_group.checkedId()],
+            "preset": self._active_preset,
             "profile": self._selected_profile_name(),
         }
         for key, box in self.checkboxes.items():
