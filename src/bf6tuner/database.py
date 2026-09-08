@@ -1,19 +1,31 @@
-"""Loads the settings database, from the encrypted bundle in a build or from
-the plain JSON sources during development."""
+"""Loads the settings database from plain JSON, bundled read-only alongside
+the executable in a shipped build or read straight out of ``data/`` in a
+source checkout.
+
+The database used to ship AES-256-GCM encrypted (see git history / ARCHITECTURE.md
+if you're wondering why references to that still show up in old commits). That
+bought a tamper-evidence check and made the files annoying to hand-edit, at the
+cost of a fresh random key baked into the binary on every single build — which
+meant every build, even with zero code changes, was a byte-different,
+never-before-seen file to Windows SmartScreen/Smart App Control. The data here
+is public BF6 hardware/settings reference info, not a secret, so that trade
+wasn't worth it. See README "Getting the executable" for what actually helps
+with SmartScreen (it isn't this).
+"""
 
 from __future__ import annotations
 
-import base64
 import json
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from . import crypto
-
 DATASETS = ("gpu_db", "cpu_db", "cfg_commands", "ingame_settings", "system_tweaks")
-BUNDLE_NAME = "bf6tuner.db"
+
+
+class DatabaseError(RuntimeError):
+    """Raised when the settings database is missing or malformed."""
 
 
 def _resource_root() -> Path:
@@ -22,15 +34,6 @@ def _resource_root() -> Path:
     if frozen:
         return Path(frozen)
     return Path(__file__).resolve().parent.parent.parent
-
-
-def _bundle_key() -> bytes | None:
-    """The build-time key, injected as a generated module. Absent in a source checkout."""
-    try:
-        from ._keyring import BUNDLE_KEY  # type: ignore[attr-defined]
-    except ImportError:
-        return None
-    return base64.b64decode(BUNDLE_KEY)
 
 
 @dataclass
@@ -76,43 +79,26 @@ def _load_plain(data_dir: Path) -> Database:
     for name in DATASETS:
         path = data_dir / f"{name}.json"
         if not path.is_file():
-            raise crypto.BundleError(f"Missing database file: {path}")
+            raise DatabaseError(f"Missing database file: {path}")
         payload[name] = json.loads(path.read_text(encoding="utf-8"))
     db = Database(**payload)
-    db.source = f"plain JSON ({data_dir})"
+    db.source = f"JSON ({data_dir})"
     db.version = payload["gpu_db"].get("version", "unknown")
     return db
 
 
-def load(explicit_path: Path | None = None) -> Database:
-    """Load the database.
+def load(explicit_dir: Path | None = None) -> Database:
+    """Load the database from plain JSON.
 
-    Prefers the encrypted bundle so that a shipped build never falls back to
-    editable JSON that happens to be lying around. Only a source checkout,
-    which has no key, reads the plain files.
+    Looks under the frozen resource root first (a shipped build's bundled
+    ``data/`` folder), then the repo's top-level ``data/`` (a source checkout).
     """
+    if explicit_dir is not None:
+        return _load_plain(explicit_dir)
+
     root = _resource_root()
-    bundle_path = explicit_path or (root / BUNDLE_NAME)
-    key = _bundle_key()
-
-    if bundle_path.is_file() and key is not None:
-        payload, header = crypto.unpack(bundle_path.read_bytes(), key)
-        missing = [name for name in DATASETS if name not in payload]
-        if missing:
-            raise crypto.BundleError(f"Database bundle is incomplete: missing {', '.join(missing)}")
-        db = Database(**{name: payload[name] for name in DATASETS})
-        db.source = "encrypted bundle"
-        db.version = header.get("version", "unknown")
-        return db
-
-    if bundle_path.is_file() and key is None:
-        raise crypto.BundleError(
-            "An encrypted database is present but this build has no key. "
-            "Rebuild with packaging/build.py rather than mixing artefacts."
-        )
-
     for candidate in (root / "data", Path(__file__).resolve().parents[2] / "data"):
         if candidate.is_dir():
             return _load_plain(candidate)
 
-    raise crypto.BundleError(f"No settings database found. Looked for {bundle_path} and ./data.")
+    raise DatabaseError(f"No settings database found. Looked for data/ under {root} and its source checkout.")

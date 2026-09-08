@@ -178,7 +178,7 @@ The artifact contains **two executables**:
 | `BF6Tuner.exe` | The app. Double-click it. No console window appears. |
 | `BF6Tuner-cli.exe` | The same application, for use from a terminal or a script. |
 
-They are the same code and the same encrypted database. Windows decides whether
+They are the same code and the same database. Windows decides whether
 an executable is a GUI program or a console program when it is linked, and there
 is no runtime switch: a GUI binary has no stdout at all, and a shell does not
 even wait for it to finish. So a single executable cannot both double-click
@@ -199,8 +199,8 @@ The app also checks for you: on launch, and on demand via **Check for updates** 
 the header, it asks GitHub's API whether `main` has moved on since the commit this
 build was made from, and — if so — shows the commit messages for everything you'd
 be getting, so it's an informed decision rather than a blind pull. There is no
-auto-download (no formal release artifact to fetch without a browser — see "About
-`encrypted`" and "Getting the executable" above), so the dialog links straight to
+auto-download (no formal release artifact to fetch without a browser — see
+"Getting the executable" above), so the dialog links straight to
 the GitHub Actions run that has the built executables attached. Never blocks
 startup, and a failed or offline check just stays quiet.
 
@@ -216,26 +216,32 @@ That one script creates a virtual environment, installs dependencies, runs the
 tests, builds both executables into `dist\`, and opens the folder. Add
 `--obfuscate` to run PyArmor over the source as well.
 
-## About "encrypted"
+## About the database
 
-Stated plainly, because this is worth being precise about:
+Stated plainly, because this used to work differently and it's worth being
+precise about the change:
 
-- The settings database is **AES-256-GCM encrypted** and compressed into a
-  single blob inside the executable. No editable JSON ships alongside it, and a
-  build that finds an encrypted bundle will not fall back to plain files.
-- The GCM tag is **verified before use**, so a modified database refuses to load
-  rather than silently feeding wrong values into the engine.
-- A **fresh key is generated on every build** and injected into the binary. It is
-  never committed.
-- Optional **PyArmor obfuscation** (`--obfuscate`) compiles the Python source so
-  the logic is not readable either.
+- The settings database (`data/*.json` — GPU/CPU benchmark scores and BF6
+  settings tables) ships as **plain JSON**, bundled read-only alongside the
+  executable. It is public reference data, not a secret, so there is nothing
+  here worth encrypting.
+- It used to ship AES-256-GCM encrypted, with a fresh random key baked into
+  the binary on every single build. That bought "casual copy/tamper
+  protection" for data that didn't need it, at a real cost: a build with zero
+  source changes still produced a byte-different, never-before-seen file
+  every time, which is exactly what Windows SmartScreen / Smart App Control
+  has no reputation for and can block. That trade wasn't worth it, so the
+  encryption is gone (removed 2026-09-08).
+- Optional **PyArmor obfuscation** (`--obfuscate`) still compiles the Python
+  source itself, for anyone who wants a bar against casually reading the
+  code — unrelated to the database.
 
-What this buys: the data cannot be read or edited with a text editor, cannot be
-lifted out and reused, and cannot be tampered with undetected. What it does not
-buy: protection from someone with a debugger. The key has to be inside the binary
-because the binary decrypts without a server — that is true of every client-side
-scheme, and anyone claiming otherwise is selling something. If you need stronger
-guarantees, the database has to move behind a licensed server.
+To be clear about what removing this did and didn't fix: it removes one
+guaranteed source of build-to-build hash churn (the random key), but a real
+code change still legitimately produces a new binary every time, so this
+alone does not make SmartScreen/Smart App Control stop flagging fresh
+builds. See "If Windows won't run the built .exe at all" below for what
+actually works today.
 
 ## Running it
 
@@ -264,9 +270,10 @@ behaviour described above. `--help` lists everything.
 **If Windows won't run the built .exe at all** — Smart App Control (Windows
 11's stricter, less overridable successor to classic SmartScreen) can block a
 freshly-built, unsigned executable outright with no "Run anyway" option, and
-every build here has a fresh hash (see "About encrypted" above), so it never
-accumulates reputation. If you hit this and don't have a code-signing
-certificate, run it from source instead — Smart App Control evaluates
+every real code change here produces a fresh, never-before-seen hash, so it
+never accumulates reputation (see "About the database" above — this isn't an
+encryption thing, it's a signing/reputation gap). If you hit this and don't
+have a code-signing certificate, run it from source instead — Smart App Control evaluates
 standalone executables, not scripts interpreted by an already-trusted
 `python.exe`, so this sidesteps it entirely:
 
@@ -290,7 +297,8 @@ refuses.
 
 ## The database
 
-Five JSON datasets under `data/`, encrypted into one bundle at build time:
+Five JSON datasets under `data/`, bundled as plain files at build time (see
+"About the database" above for why they aren't encrypted):
 
 | File | Contents |
 |---|---|
@@ -324,13 +332,12 @@ only thing that needs changing.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests -q          # 183 tests
+python -m pytest tests -q          # 190 tests
 PYTHONPATH=src python -m bf6tuner --preset competitive   # CLI, runs on Linux too
 ```
 
 Off Windows, hardware detection returns a clearly-labelled sample profile so the
-engine and UI can be exercised anywhere. `python packaging/build.py --bundle-only`
-builds just the encrypted database.
+engine and UI can be exercised anywhere.
 
 ```
 bf6/
@@ -343,15 +350,14 @@ bf6/
 │   ├── costs.py          per-option cost curves shared by engine and compare
 │   ├── compare.py        current vs recommended, impact and trade-offs
 │   ├── writer.py         rendering, restore points, PROFSAVE patching, reports
-│   ├── crypto.py         AES-256-GCM bundle format
-│   ├── database.py       encrypted-bundle-first loader
+│   ├── database.py       plain-JSON loader (bundled data/, frozen or not)
 │   ├── update.py         checks GitHub for a newer build, never blocks or raises
 │   ├── icon.py           the app icon, drawn in pure Python - shared by the build and the running app
 │   ├── benchmark.py      real frame-time capture via PresentMon, checked against the prediction
 │   ├── cli.py            headless mode
 │   └── ui/               Qt window, comparison view, restore/locate/update dialogs, theme
 ├── packaging/            build.py, build.bat, PyInstaller spec, icon generator
-└── tests/                engine policy, comparison, restore, crypto and update tests
+└── tests/                engine policy, comparison, restore and update tests
 ```
 
 ## Sources

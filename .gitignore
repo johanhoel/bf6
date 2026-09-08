@@ -1,5 +1,4 @@
-# Generated at build time - a fresh key on every build, never checked in
-src/bf6tuner/_keyring.py
+# Generated at build time - the commit/timestamp this build was made from, never checked in
 src/bf6tuner/_build_info.py
 packaging/_build/
 dist/
