@@ -73,19 +73,22 @@ def local_commit() -> str:
 
     Frozen builds get it from ``_build_info.py``, written at build time by
     ``packaging/build.py`` (generated, gitignored, regenerated every build).
-    A source checkout falls back to asking git directly, so a dev run of
-    ``python -m bf6tuner`` gets a meaningful answer too.
+    A source checkout asks git directly instead - deliberately *never*
+    trusting ``_build_info.py`` there, even if one happens to be lying
+    around from an old local ``packaging/build.py`` run: that file is
+    gitignored, so nothing ever cleans it up, and running it through
+    ``run-from-source.bat``/``python -m bf6tuner`` afterwards would silently
+    report an old build's commit instead of the code actually on disk (this
+    happened for real - see ARCHITECTURE.md's work log). Only a genuinely
+    frozen build, where git may not even be installed, has any reason to
+    read the baked-in file at all.
     """
-    try:
-        from . import _build_info  # type: ignore[attr-defined]
-        sha = getattr(_build_info, "GIT_COMMIT", "")
-        if sha:
-            return sha
-    except ImportError:
-        pass
-
     if getattr(sys, "frozen", False):
-        return ""  # built without _build_info.py - can't know
+        try:
+            from . import _build_info  # type: ignore[attr-defined]
+            return getattr(_build_info, "GIT_COMMIT", "") or ""
+        except ImportError:
+            return ""  # built without _build_info.py - can't know
 
     try:
         root = Path(__file__).resolve().parents[2]
