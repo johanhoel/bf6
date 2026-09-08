@@ -2286,6 +2286,19 @@ class MainWindow(QMainWindow):
         module docstring for why these, unlike most state, are remembered
         rather than re-derived). Called during sidebar construction, while
         `_loading` is still True, so this never triggers a premature refresh.
+
+        Also restores which named profile (see `_build_profiles_card`) was
+        last selected, purely so the combo box shows it instead of "- none
+        selected -" - it does **not** re-apply that profile's settings (the
+        preset/checkboxes/overrides restored above already carry whatever
+        was actually in effect, via the exact same mechanism regardless of
+        whether they came from a profile or manual choices). This is
+        deliberately just the combo's displayed selection, not a "currently
+        loaded profile" tracking state - seeing your settings drift from a
+        profile you loaded, with the combo still innocently showing its
+        name, would be worse than showing no selection at all. Only
+        restoring which name was last *picked* avoids that: it can never
+        claim more than "this was the last one you looked at."
         """
         saved = prefs.load_target()
         self._has_persisted_target = bool(saved)
@@ -2300,9 +2313,15 @@ class MainWindow(QMainWindow):
         for key, box in self.checkboxes.items():
             if isinstance(saved.get(key), bool):
                 box.setChecked(saved[key])
+        profile_name = saved.get("profile")
+        if isinstance(profile_name, str) and profile_name:
+            self._reload_profile_combo(select=profile_name)
 
     def _save_target(self) -> None:
-        values: dict[str, object] = {"preset": PRESETS[self.preset_group.checkedId()]}
+        values: dict[str, object] = {
+            "preset": PRESETS[self.preset_group.checkedId()],
+            "profile": self._selected_profile_name(),
+        }
         for key, box in self.checkboxes.items():
             values[key] = box.isChecked()
         prefs.save_target(values)
