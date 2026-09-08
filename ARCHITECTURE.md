@@ -531,14 +531,36 @@ real but **not the whole story**. After the user rebooted:
   the user's informed choice, not a bug to keep chasing. The FPS
   *prediction* (the non-PresentMon path) is unaffected and still works
   normally.
-- **Follow-up worth doing, not done yet**: `run_capture`'s "access
-  denied"/"elevat" branch could mention Core Isolation/Memory Integrity as a
-  known cause alongside the existing elevation guidance, since this is now
-  a second real-world report of the exact same failure shape surviving
-  elevation. Would need `benchmark.py`'s user-facing message updated and a
-  README mention; not built this session since the user chose not to
-  pursue a fix on this machine, so there was no confirmation loop to close
-  the wording against. If this recurs, that's the natural next code change.
+- **Follow-up done same day, see entry (21)**: `run_capture`'s PID-targeted
+  "still needs administrator rights" message now mentions both confirmed
+  real-world causes (lingering PresentMon service/session, Core
+  Isolation/Memory Integrity) directly, not just elevation.
+
+### 2026-09-08 (21) — Taught the PID-targeted access-denied message the two real causes found above
+
+Small, direct follow-up to entries (19)/(20), picked by the user from a
+"what's next for this app" menu over scoping a code-signing cert.
+
+- `benchmark.run_capture`'s PID-targeted branch (fires when `--process_id`
+  targeting *still* gets "access denied" — i.e. the user already tried the
+  obvious things) now says outright that elevation may not be the real
+  cause, and names both confirmed culprits: a full PresentMon app install
+  leaving its `PresentMonSharedService`/`PMService` ETW session running even
+  after the service is stopped or the app uninstalled (check `logman query
+  -ets`, reboot if found), and Core Isolation/Memory Integrity blocking ETW
+  capture regardless of admin rights. Previously this branch only suggested
+  relaunching elevated, the game needing elevation too, or the 'Performance
+  Log Users' group — none of which turned out to be the real cause in
+  practice.
+- Deliberately left the by-name (non-PID) branch's message alone — it's the
+  first thing a user sees, before they've tried PID targeting, and the
+  existing "relaunch elevated" guidance is still the right first step there.
+- `tests/test_benchmark.py`'s existing PID-branch test only asserts
+  `"still needs administrator"`, `"not by name"`, and the PID number appear
+  — didn't need updating, still passes. All 190 tests pass
+  (`PYTHONPATH=src python -m pytest tests -q`).
+- Followed the standing build/release workflow (GitHub Actions artifact,
+  not a local build).
 
 ### 2026-09-07 (17) — Smart App Control has no override on this machine at all
 User's build kept getting blocked, and this time "Unblock" (which only
