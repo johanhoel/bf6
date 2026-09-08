@@ -366,6 +366,37 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-08 (29) — Remember which named profile was last selected
+
+User: saved a named profile, loaded it, closed and reopened the app - the
+Profiles combo showed "- none selected -" instead of the profile they'd
+just used. Traced to a deliberate design choice in `_build_profiles_card`'s
+own comment: "no separate 'currently loaded profile' state... easier to
+predict than tracking 'loaded' separately from 'selected' - the two could
+otherwise silently drift apart." That reasoning is still correct for the
+harder problem (detecting whether the live settings still match the
+profile after further edits) - not reversed here. What's fixed is
+narrower: just remembering which name was last *picked* in the combo,
+purely cosmetic for what's displayed, with no claim that it's still an
+exact match to anything.
+
+- `_save_target()`/`_apply_persisted_target()` (entry (25)'s mechanism)
+  gained one more field, `"profile"` - `self._selected_profile_name()` at
+  save time, `self._reload_profile_combo(select=...)` at restore time.
+  Reuses the existing `target.json` persistence rather than adding new
+  storage. `_reload_profile_combo` already degrades gracefully if the name
+  no longer exists (falls back to "- none selected -" via `findText`
+  returning -1) - e.g. if the profile was deleted since.
+  Load/Save-as/Update/Delete's own behavior is completely unchanged - they
+  still act on whatever the combo currently shows, full stop, same as the
+  original comment describes.
+- Not unit-tested directly (Qt-widget-layer glue requiring the full
+  sidebar's widget tree - `MainWindow` can't be constructed offscreen at
+  all, see entry (22)); verified by code review and the same
+  `findText`/fallback logic already exercised informally by the existing
+  Load button flow. All 203 tests still pass (no regressions; nothing new
+  to add at the pure-logic layer since there isn't one here).
+
 ### 2026-09-08 (28) — Seed real per-setting overrides too, and size the window to the screen
 
 Follow-up to entry (25). User: "go further" than picking the closest
