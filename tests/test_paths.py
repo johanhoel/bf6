@@ -185,6 +185,19 @@ def test_profiles_round_trip(tmp_path, monkeypatch):
     assert set(prefs.load_profiles()) == {"Tournament"}
 
 
+def test_target_round_trip(tmp_path, monkeypatch):
+    """The last-used preset/toggles (see prefs.py's module docstring for why
+    this, unlike most state, is persisted rather than re-derived)."""
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    assert prefs.load_target() == {}
+
+    prefs.save_target({"preset": "esports", "overlay": False, "vrr": True})
+    assert prefs.load_target() == {"preset": "esports", "overlay": False, "vrr": True}
+
+    prefs.save_target({"preset": "quality", "overlay": True})
+    assert prefs.load_target() == {"preset": "quality", "overlay": True}
+
+
 def test_rename_profile_preserves_data_and_drops_the_old_name(tmp_path, monkeypatch):
     monkeypatch.setenv("APPDATA", str(tmp_path))
     prefs.save_profile("Old name", {"preset": "esports"})

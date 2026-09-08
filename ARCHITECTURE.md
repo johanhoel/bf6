@@ -347,6 +347,68 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-08 (25) — Preset/target no longer hardcoded to Competitive + overlay-on every launch
+
+User: "make sure the app detects the current config... every time it's
+opened it opens with competitive settings and show fps turned on even if I
+have completely other settings running." Real bug, not a misunderstanding —
+`_build_sidebar` hardcoded `button.setChecked(name == "competitive")` and
+the overlay checkbox's `default` literal was `True`, unconditionally, every
+launch, no matter what was chosen last time or what's actually applied
+in-game.
+
+Root design question first: is this "detect from the real config" or
+"remember what was chosen"? Answer differs per field:
+- **Resolution/refresh/HDR were already correctly auto-detected** from real
+  hardware (`_on_detected`) - not part of the bug, left alone.
+- **VRR, "I stream/record", frame generation, Thread.* overrides, legacy
+  keys, and the FPS overlay have no detectable signal at all** - there is no
+  Windows API for "is VRR enabled," and the FPS overlay isn't even a BF6
+  setting tracked in the save file (confirmed: no entry in
+  `ingame_settings.json` mentions overlay/fps). For these, "replicate
+  current config" can only honestly mean "remember what I chose last time,"
+  not detection.
+- **The preset is different** - the actual current in-game settings *can*
+  be read (`compare.py` already does this for the comparison tab), so a
+  genuine best-effort detection is possible: which preset needs the fewest
+  changes against what's really saved.
+
+Implemented both, cleanly separated:
+- `prefs.py`: new `load_target()`/`save_target()` (a `target.json`, same
+  pattern as the existing overrides files). Module docstring updated - this
+  is now the one deliberate exception to "everything else is re-derived."
+  `ui/app.py`: `_apply_persisted_target()` restores it during sidebar
+  construction (still under `_loading = True`, so no premature refresh);
+  `_save_target()` runs at the end of every `refresh()` (which already
+  early-returns while `_loading`, so this only ever fires on a real change).
+- `compare.py`: new `closest_preset(db, profile, base_target, profsave,
+  user_cfg, overrides=, cfg_overrides=)` - tries every preset, keeps whichever
+  needs the fewest `comparison.changes`, returns `None` if there's nothing to
+  compare against (no PROFSAVE_profile found) rather than guessing blind.
+  Deliberately placed in `compare.py`, not `ui/app.py`, so it is unit-testable
+  without Qt (`ui/app.py`'s `_detect_closest_preset` is now a 3-line
+  delegate). Wired into `_on_detected`, gated on `not self._has_persisted_target`
+  - only a genuine first-ever launch guesses from the real profile; every
+  launch after that uses the remembered choice instead.
+- Verified the "fewest changes" heuristic actually behaves sensibly before
+  trusting it: ran all 4 presets against `test_compare.py`'s `ULTRA_PROFSAVE`
+  fixture (everything maxed) by hand - `quality` needs 8 changes,
+  every other preset needs 16-18. Not a coincidence; that's exactly what
+  "closest preset" should mean. Turned into
+  `test_closest_preset_picks_the_preset_with_fewest_changes` (writes
+  `ULTRA_PROFSAVE` to a real `tmp_path` file, since `closest_preset` goes
+  through `from_paths` internally) plus a "no file -> None, don't guess"
+  test. Also added `test_target_round_trip` (`tests/test_paths.py`, same
+  `monkeypatch.setenv("APPDATA", ...)` pattern as the other prefs tests).
+- All 196 tests pass (193 + 3 new). Could not verify the actual UI
+  visually or interactively (same offscreen-`MainWindow` crash noted in
+  entry (22) - unrelated, still unfixed, still doesn't affect the real app)
+  - this is verified at the logic layer (`compare.closest_preset`,
+  `prefs.load_target`/`save_target`) but not by clicking through the real
+  window. Ask the user to confirm the preset/checkboxes actually stick
+  across a real relaunch.
+- Followed the standing build/release workflow.
+
 ### 2026-09-08 (24) — A stale local `_build_info.py` was lying to the update checker
 
 User ran `run-from-source.bat` after this session's changes and got "Update

@@ -202,6 +202,7 @@ class MainWindow(QMainWindow):
         self.update_info: update.UpdateInfo | None = None
         self._busy_count = 0
         self._presentmon_path: Path | None = None
+        self._has_persisted_target = False
         self._loading = True
 
         self.setWindowTitle(f"{APP_NAME} {__version__} - Battlefield 6 configurator")
@@ -614,6 +615,8 @@ class MainWindow(QMainWindow):
             box.toggled.connect(self.refresh)
             self.checkboxes[key] = box
             target_layout.addWidget(box)
+
+        self._apply_persisted_target()
 
         layout.addWidget(target_card)
         layout.addStretch(1)
@@ -2134,6 +2137,19 @@ class MainWindow(QMainWindow):
         self.resolution_box.setCurrentIndex(index)
         self.refresh_box.setValue(max(p.max_refresh_hz, p.refresh_hz, 60))
         self.checkboxes["hdr"].setChecked(p.hdr_display)
+
+        # First-ever launch (no persisted target yet, see prefs.py): start
+        # from whichever preset actually needs the fewest changes against
+        # what's really saved right now, instead of a hardcoded default that
+        # may not match reality at all.
+        if not self._has_persisted_target:
+            detected_preset = self._detect_closest_preset()
+            if detected_preset is not None:
+                button = self.preset_group.button(PRESETS.index(detected_preset))
+                if button is not None:
+                    button.setChecked(True)
+                    self.preset_blurb.setText(PRESET_BLURB[detected_preset])
+
         self._loading = False
 
         self.statusBar().showMessage(
@@ -2215,6 +2231,43 @@ class MainWindow(QMainWindow):
             show_fps_overlay=self.checkboxes["overlay"].isChecked(),
         )
 
+    def _apply_persisted_target(self) -> None:
+        """Restore the last explicitly-chosen preset/toggles (see prefs.py's
+        module docstring for why these, unlike most state, are remembered
+        rather than re-derived). Called during sidebar construction, while
+        `_loading` is still True, so this never triggers a premature refresh.
+        """
+        saved = prefs.load_target()
+        self._has_persisted_target = bool(saved)
+        if not saved:
+            return
+        preset = saved.get("preset")
+        if preset in PRESETS:
+            button = self.preset_group.button(PRESETS.index(preset))
+            if button is not None:
+                button.setChecked(True)
+                self.preset_blurb.setText(PRESET_BLURB[preset])
+        for key, box in self.checkboxes.items():
+            if isinstance(saved.get(key), bool):
+                box.setChecked(saved[key])
+
+    def _save_target(self) -> None:
+        values: dict[str, object] = {"preset": PRESETS[self.preset_group.checkedId()]}
+        for key, box in self.checkboxes.items():
+            values[key] = box.isChecked()
+        prefs.save_target(values)
+
+    def _detect_closest_preset(self) -> str | None:
+        """Best-effort guess at which preset needs the fewest changes against
+        what is actually saved right now - the matching logic itself lives in
+        `compare.closest_preset` so it is testable without Qt.
+        """
+        return compare.closest_preset(
+            self.db, self.profile, self.current_target(),
+            self.game.profsave, self.game.user_cfg,
+            overrides=self.setting_overrides, cfg_overrides=self.cfg_overrides,
+        )
+
     def refresh(self) -> None:
         if self._loading:
             return
@@ -2230,6 +2283,7 @@ class MainWindow(QMainWindow):
             self.db, self.rec, self.game.profsave, self.game.user_cfg
         )
         self._render()
+        self._save_target()
 
     def _render(self) -> None:
         rec = self.rec

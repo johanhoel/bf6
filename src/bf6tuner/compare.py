@@ -23,7 +23,8 @@ from typing import Any
 
 from .database import Database
 from .costs import cost_for as _cost_for, frame_time as _frame_time, zero as _zero
-from .engine import Recommendation, SettingChoice
+from .engine import PRESETS, Recommendation, SettingChoice, Target, recommend
+from .hardware import HardwareProfile
 from .writer import parse_profsave, render_user_cfg
 
 # Quality order for settings whose values are not numeric.
@@ -393,3 +394,39 @@ def from_paths(
         return None
 
     return build(db, rec, read(profsave), read(user_cfg), profsave, user_cfg)
+
+
+def closest_preset(
+    db: Database, profile: HardwareProfile, base_target: Target,
+    profsave: Path | None, user_cfg: Path | None,
+    overrides: dict[str, Any] | None = None, cfg_overrides: dict[str, Any] | None = None,
+) -> str | None:
+    """Which preset needs the fewest changes against what is actually saved
+    right now - a best-effort guess for a genuine first launch (no persisted
+    target yet, see ``prefs.py``), so the app can start from something closer
+    to reality than a hardcoded default. `base_target` supplies everything
+    except the preset (resolution, refresh rate, VRR/HDR/etc.) - only the
+    preset field varies across candidates.
+
+    Returns ``None`` if there is nothing to compare against yet (no
+    PROFSAVE_profile found) rather than guessing blind.
+    """
+    from dataclasses import replace
+
+    best_preset: str | None = None
+    best_changes: int | None = None
+    for name in PRESETS:
+        try:
+            candidate = recommend(
+                db, profile, replace(base_target, preset=name),
+                overrides=overrides, cfg_overrides=cfg_overrides,
+            )
+            comparison = from_paths(db, candidate, profsave, user_cfg)
+        except Exception:
+            continue
+        if not comparison.available:
+            return None
+        changes = len(comparison.changes)
+        if best_changes is None or changes < best_changes:
+            best_changes, best_preset = changes, name
+    return best_preset
