@@ -430,3 +430,22 @@ def closest_preset(
         if best_changes is None or changes < best_changes:
             best_changes, best_preset = changes, name
     return best_preset
+
+
+def seed_overrides_from_current(comparison: Comparison) -> dict[str, Any]:
+    """Every setting whose real, currently-saved value still differs from
+    the recommendation, ready to use as per-setting overrides - so a
+    genuine first-ever launch (see `closest_preset`, `prefs.py`) can start
+    from what is actually configured, not just the nearest built-in preset.
+
+    Deliberately just reads off `comparison.changes` rather than
+    re-deriving anything: `build()`/`from_paths()` have already excluded
+    everything that shouldn't be force-set here - `personal`/`never_write`
+    settings (never land in `.changes`, see `build()`), and anything
+    `unverified`/unknown to the current profile (no `profsave_key` means no
+    real current value to read, so it lands in `.unknown` instead). This
+    function adds nothing to that classification; it only re-shapes what's
+    already there into the `{setting_id: value}` shape `recommend()`'s
+    `overrides` parameter expects.
+    """
+    return {change.setting_id: change.current_value for change in comparison.changes}

@@ -366,6 +366,58 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-08 (28) — Seed real per-setting overrides too, and size the window to the screen
+
+Follow-up to entry (25). User: "go further" than picking the closest
+preset - load every individual current setting exactly, so the app opens
+showing 0 changes, not just the nearest preset's approximation. Also asked
+for the window to open sized to the screen (not fullscreen), and whether
+keybind config shipped this release (no - still blocked on real reference
+data, see entry (26)'s note, unchanged).
+
+- `compare.seed_overrides_from_current(comparison) -> dict[str, Any]`:
+  deliberately trivial - just reads `{change.setting_id: change.current_value
+  for change in comparison.changes}` off an already-built `Comparison`.
+  All the actual filtering (never personal/never_write settings - they
+  never reach `.changes`; never unverified/unknown settings - no
+  `profsave_key` means no real current value, they land in `.unknown`
+  instead) was already done by `build()`/`from_paths()`; this function
+  adds no new logic, just reshapes what's already correctly classified.
+  Deliberately does **not** blindly override every readable setting -
+  only ones that actually *differ* from the chosen preset, so the UI's
+  "N setting(s) overridden by you" doesn't lie by claiming credit for
+  values that just happened to already match.
+- `ui/app.py`: new `_seed_overrides_from_current()`, called right after
+  `_detect_closest_preset()` picks and checks a preset (same first-launch-
+  only gate, same `_has_persisted_target` guard) - computes that preset's
+  own comparison against the real profile, harvests the seed, merges into
+  `self.setting_overrides`, persists via the existing
+  `prefs.save_setting_overrides` (no new storage - reuses the override
+  mechanism that already existed for manual per-setting overrides).
+- Verified with a fixture-based test using `ULTRA_PROFSAVE` against its own
+  closest preset (`quality`): confirmed exactly 8 settings differ (same
+  count `closest_preset`'s own test already established), all 8 come back
+  from `seed_overrides_from_current` at their real profile values (spot-
+  checked `texture_quality`, `vsync`), and `mouse_sensitivity` (personal)
+  never appears. A second test confirms a config that already matches the
+  recommendation exactly seeds nothing - no redundant overrides invented.
+- **Window sizing**: `MainWindow.__init__` no longer hardcodes
+  `resize(1320, 880)` - new `_size_to_screen()` reads
+  `QApplication.primaryScreen().availableGeometry()` (excludes the
+  taskbar) and sizes to ~80%/85% of it, capped at 1600x1000 (the layout is
+  designed around a fixed ~390px sidebar + a few hundred more of content,
+  not built to stretch arbitrarily wide on a 5120px ultrawide) and floored
+  at the existing 1080x700 minimum, then centers the window. Falls back to
+  the old fixed size if `primaryScreen()` somehow returns nothing.
+  Verified offscreen (`QT_QPA_PLATFORM=offscreen` reports a fake 800x800
+  screen; the floor correctly kicks in, producing the 1080x700 minimum
+  rather than something smaller or a crash) - **not verified on a real
+  screen/multi-monitor setup**, ask for confirmation it looks right,
+  especially on the user's 5120x1440 ultrawide specifically.
+- All 203 tests pass (201 + 2 new). Followed the standing build/release
+  workflow, including printing the public `releases/download/latest/...`
+  URLs after the build per the user's new standing preference.
+
 ### 2026-09-08 (27) — Row height, round 4: stopped guessing, started measuring
 
 User: "the text in config is still almost unreadable as the text is larger

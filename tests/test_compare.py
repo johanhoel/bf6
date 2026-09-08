@@ -288,3 +288,41 @@ def test_closest_preset_returns_none_without_a_profsave_file(db, tmp_path):
 
     assert compare.closest_preset(db, make_profile(), base, missing, None) is None
     assert compare.closest_preset(db, make_profile(), base, None, None) is None
+
+
+# -- seed_overrides_from_current: matching real config exactly, not just a preset --
+
+def test_seed_overrides_from_current_captures_every_real_difference(db):
+    """Even against its own closest preset ('quality'), ULTRA_PROFSAVE still
+    differs on 8 settings (confirmed via closest_preset's own test) - every
+    one of those must come back as a ready-to-use override at its real
+    current value, and nothing else."""
+    quality_rec = recommend(db, make_profile(), Target(preset="quality", width=2560,
+                                                        height=1440, refresh_hz=165))
+    c = compare.build(db, quality_rec, ULTRA_PROFSAVE, "")
+
+    seed = compare.seed_overrides_from_current(c)
+
+    assert set(seed) == {change.setting_id for change in c.changes}
+    assert len(seed) == 8
+    assert seed["texture_quality"] == 3  # Ultra, read straight off the profile
+    assert seed["vsync"] == 1  # ULTRA_PROFSAVE's real current value, not the recommendation's
+    # Personal (mouse sensitivity) and anything not on a preset's own list
+    # must never be force-set - only real, non-personal differences.
+    assert "mouse_sensitivity" not in seed
+
+
+def test_seed_overrides_from_current_is_empty_when_nothing_differs(db, rec):
+    """A config matching the recommendation exactly needs no overrides at
+    all - seeding must not invent redundant ones."""
+    lines = []
+    for choice in rec.settings:
+        if not choice.profsave_key or choice.value == "keep":
+            continue
+        value = choice.value
+        if isinstance(value, (int, float)) and choice.profsave_scale != 1.0:
+            value = f"{value * choice.profsave_scale:.6f}"
+        lines.append(f"{choice.profsave_key} {value}")
+    c = compare.build(db, rec, "\n".join(lines), "")
+
+    assert compare.seed_overrides_from_current(c) == {}
