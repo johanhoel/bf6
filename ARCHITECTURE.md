@@ -481,6 +481,65 @@ symptom as before, but this time cleanly isolated:
     ever suggesting elevation. Not built; flagged as a possible follow-up if
     this recurs for another user.
 
+### 2026-09-08 (20) — PresentMon still denied post-reboot; likely cause is HVCI, not this app
+
+The orphaned-`PMService`-session theory from entry (19) turned out to be
+real but **not the whole story**. After the user rebooted:
+
+- Confirmed via `logman query -ets` that `PMService`/`PresentMonSharedService`
+  were genuinely gone (uptime check showed the reboot was ~3 minutes old) —
+  that specific leftover-session cause is resolved and won't recur.
+- The exact same "access denied" still happened with a fresh PID. Verified,
+  this time with actual token inspection (not just `IsInRole`) via a small
+  P/Invoke helper (`OpenProcessToken`/`GetTokenInformation` with
+  `TokenElevation`): **BF6 Tuner's own process token really is elevated**
+  (confirmed `True` for both the PyInstaller bootloader and the unpacked
+  child process) — so this still isn't a "not actually elevated" mistake.
+- With the game running live (PID from Task Manager), reproduced the
+  failure directly from a verified-elevated PowerShell, bypassing BF6 Tuner
+  entirely, exit code 6, identical message — confirms again this is not
+  `benchmark.py`'s launch code.
+- **Explicitly enabled `SeSystemProfilePrivilege`** in that same shell's own
+  token via `AdjustTokenPrivileges` (P/Invoke) — `whoami /priv` then showed
+  it `Enabled`, not `Disabled` — and launched PresentMon as a child of that
+  same process (which inherits the modified token). **Identical failure
+  anyway.** This rules out "the privilege just needed enabling" as the
+  cause; something is denying the trace session at a level the privilege
+  bit doesn't reach.
+- Checked for third-party AV/EDR (`root\SecurityCenter2` +
+  process-name matching against every common vendor): **none found, only
+  Windows Defender** — ruling out a third-party security product.
+- `Get-MpComputerStatus` / registry checks turned up two active non-default
+  security layers on this machine: **Smart App Control enforced**
+  (`VerifiedAndReputablePolicyState = 1`, already known from entry (17)) and
+  **Core Isolation / Memory Integrity (HVCI) enabled**
+  (`HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\
+  HypervisorEnforcedCodeIntegrity` → `Enabled = 1`).
+- **Leading hypothesis, presented to the user, not tested**: HVCI is an
+  independently-documented cause of exactly this failure mode for
+  PresentMon/RTSS/CapFrameX-style ETW frame-capture tools, unrelated to
+  local admin rights. The user was asked whether to test by temporarily
+  disabling Memory Integrity (Windows Security → Device security → Core
+  isolation, needs a reboot) and **declined** — decided the security
+  trade-off isn't worth it for this feature. **So this remains an unverified
+  but well-supported hypothesis, not a confirmed root cause** — do not state
+  it as fact if this comes up again; it's the best explanation left after
+  elevation, orphaned-session, missing-privilege, and third-party-AV were
+  all directly ruled out on this machine.
+- **Outcome for this app**: the Benchmark tab (real-measurement path) does
+  not work on this machine as long as Memory Integrity stays on, and that's
+  the user's informed choice, not a bug to keep chasing. The FPS
+  *prediction* (the non-PresentMon path) is unaffected and still works
+  normally.
+- **Follow-up worth doing, not done yet**: `run_capture`'s "access
+  denied"/"elevat" branch could mention Core Isolation/Memory Integrity as a
+  known cause alongside the existing elevation guidance, since this is now
+  a second real-world report of the exact same failure shape surviving
+  elevation. Would need `benchmark.py`'s user-facing message updated and a
+  README mention; not built this session since the user chose not to
+  pursue a fix on this machine, so there was no confirmation loop to close
+  the wording against. If this recurs, that's the natural next code change.
+
 ### 2026-09-07 (17) — Smart App Control has no override on this machine at all
 User's build kept getting blocked, and this time "Unblock" (which only
 clears Mark-of-the-Web, unrelated to Smart App Control) didn't help either,
