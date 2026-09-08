@@ -28,9 +28,9 @@ database.load()  ───┘         (matching,            │            └�
 - **`paths.py`** — finds `User.cfg` (install folder) and `PROFSAVE_profile`
   (Documents/OneDrive/AppData, newest-mtime wins). User overrides from
   `prefs.py` always beat auto-detection.
-- **`database.py`** — loads the 5 JSON datasets, either from the AES-256-GCM
-  encrypted bundle (shipped builds, via `crypto.py`) or plain `data/*.json`
-  (source checkouts).
+- **`database.py`** — loads the 5 JSON datasets, from the frozen resource
+  root's bundled `data/` (shipped builds) or the repo's top-level `data/`
+  (source checkouts). Plain JSON in both cases — see §3 for why.
 - **`engine.py`** — the core: matches detected hardware to DB entries,
   predicts GPU-limited and CPU-limited FPS separately, names the bottleneck,
   picks in-game settings (respecting VRAM caps, quality steps, upscaler
@@ -63,9 +63,6 @@ database.load()  ───┘         (matching,            │            └�
   disk until a button is pressed. See §5.
 - **`cli.py`** / **`__main__.py`** — headless driver; `__main__` picks GUI vs
   CLI based on `len(sys.argv)`.
-- **`crypto.py`** / **`_keyring.py`** — AES-256-GCM bundle format; the key is
-  build-generated and injected into `_keyring.py` (gitignored, never
-  committed — see `packaging/build.py`).
 - **`prefs.py`** — persisted user preferences: manual path overrides,
   per-setting overrides, and per-cfg-line overrides, all in
   `%APPDATA%\BF6Tuner\`.
@@ -86,9 +83,9 @@ database.load()  ───┘         (matching,            │            └�
   `"presentmon_exe"`), no new storage needed.
 - **`update.py`** / **`_build_info.py`** — checks the GitHub API for whether
   `main` has moved on since the commit this build was made from; never raises,
-  never auto-downloads. `_build_info.py` is build-generated (gitignored, same
-  pattern as `_keyring.py`) and holds the commit SHA baked into a shipped
-  build; a source checkout falls back to `git rev-parse HEAD`.
+  never auto-downloads. `_build_info.py` is build-generated (gitignored) and
+  holds the commit SHA baked into a shipped build; a source checkout falls
+  back to `git rev-parse HEAD`.
 
 ---
 
@@ -157,7 +154,7 @@ database.load()  ───┘         (matching,            │            └�
 
 ---
 
-## 3. The database (`data/*.json` → `bf6tuner.db`)
+## 3. The database (`data/*.json`)
 
 Five JSON files, each with a `"schema": "bf6tuner.<name>/N"` header, loaded
 via `Database` (`database.py`):
@@ -185,13 +182,23 @@ PROFSAVE_profile until someone confirms the real key and removes the flag.
 The UI surfaces this with an "(unverified)" label suffix and a badge in the
 detail pane — never presented as researched fact.
 
-Encryption: `packaging/build.py` packs all five files with a fresh random
-32-byte key (`crypto.new_key()`) into `bf6tuner.db` and writes the key to
-`src/bf6tuner/_keyring.py` (gitignored — regenerated every build). A shipped
-build ships *only* the encrypted bundle (`bf6tuner.spec` explicitly excludes
-plain `data/`), so it can never silently fall back to editable JSON.
-`database.load()` treats "bundle present, no key" as a hard error rather than
-undefined behavior — don't copy a `.db` next to a source checkout.
+**Not encrypted, deliberately.** This used to ship as an AES-256-GCM blob
+(`crypto.py`, removed 2026-09-08) with a fresh random key baked into a
+build-generated `_keyring.py` on *every* build. The data itself is public BF6
+hardware/settings reference info, not a secret worth protecting, so that
+bought "casual copy/tamper protection" for nothing sensitive — at the real
+cost of guaranteeing a byte-different, never-before-seen file hash on every
+single build (even a build with zero source changes), which is exactly the
+kind of thing Windows SmartScreen/Smart App Control has no reputation for
+and can block outright. `packaging/build.py` now just validates the five
+JSON files parse (`verify_data`) and `bf6tuner.spec` bundles `data/*.json`
+into the frozen app's resource root as-is; `database.load()` reads them the
+same way whether frozen or not. See README "About the database" and
+"Getting the executable" for the rest of that story — removing this did
+**not** fully fix the SmartScreen block by itself (that's a signing/
+reputation gap, not a "the file is encrypted" heuristic); it just removes
+one guaranteed source of build-to-build hash churn and a chunk of code to
+maintain.
 
 ---
 
@@ -261,8 +268,8 @@ undefined behavior — don't copy a `.db` next to a source checkout.
 
 ## 5. Packaging & build (`packaging/`)
 
-`build.py` pipeline: pack encrypted DB (`prepare_bundle`, writes
-`_keyring.py`) → generate Windows version resource → write `_build_info.py`
+`build.py` pipeline: validate the plain-JSON DB (`verify_data`) → generate
+Windows version resource → write `_build_info.py`
 (`write_build_info`, the commit SHA `update.py` compares against GitHub) →
 optional PyArmor obfuscation (`--obfuscate`) → PyInstaller via `bf6tuner.spec`. The spec
 builds **two EXEs from one Analysis**: `BF6Tuner` (GUI subsystem, no
@@ -281,8 +288,7 @@ executables.
 rendering, and the full override system. `test_compare.py` covers the diff
 logic and additive frame-time model. `test_paths.py` covers the file-finding
 edge cases (per-account subfolders, Saved Games, override precedence).
-`test_restore.py` covers the backup/restore atomicity guarantees.
-`test_crypto.py` covers the bundle format's tamper/wrong-key rejection. All
+`test_restore.py` covers the backup/restore atomicity guarantees. All
 manually add `src/` to `sys.path`; most share a `make_profile(**overrides)`
 fixture (baseline: Ryzen 7 7800X3D / RTX 4070 SUPER / 32GB@6000MT/s /
 2560×1440@165Hz).
@@ -313,9 +319,12 @@ tests as of the last README update).
   both compare.py and the UI say so — don't "fix" the per-row numbers to sum
   to the total; that would misrepresent the interaction of simultaneous
   changes.
-- **Shipped builds cannot fall back to plain JSON.** `bf6tuner.spec`
-  excludes `data/` on purpose; `database.load()` errors loudly rather than
-  silently degrading if a bundle exists without its key.
+- **The database is plain JSON, not encrypted — and that's deliberate, not
+  an oversight.** See §3. It's public reference data, not a secret; encrypting
+  it only bought a fresh random key baked into every build, which guaranteed
+  a never-before-seen file hash (and a SmartScreen/Smart App Control flag) on
+  every single build. Don't re-add encryption "for consistency" without
+  re-reading that rationale.
 - **Restore points snapshot both files atomically** so undo is one action,
   and record files that *didn't exist* so restore can clean up files the app
   itself created.
@@ -337,6 +346,47 @@ tests as of the last README update).
 
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
+
+### 2026-09-08 (18) — Removed database encryption
+
+- User asked to "re-think" the app and make it unencrypted so Windows would
+  stop blocking it. Re-checked the actual root cause first rather than just
+  doing it: the SmartScreen/Smart App Control block is a pure reputation gap
+  (confirmed on 2026-09-07 — see entry (17) — Defender's own detection
+  history showed nothing, cloud protection works fine, there's just no trust
+  for a hash nobody else has run). Encryption wasn't the cause of *that*
+  specifically, but it was one guaranteed source of the underlying problem:
+  `packaging/build.py` baked a fresh random AES key into `_keyring.py` on
+  every single build, so even a build with zero source changes produced a
+  byte-different file. Asked the user whether to proceed given that removing
+  it wouldn't fully fix the block by itself (they'd still need
+  `run-from-source.bat` or a code-signing cert for a clean double-click) —
+  they chose to remove it anyway, on the merits (the data is public BF6
+  reference tables, not a secret; less code to maintain).
+- Deleted `src/bf6tuner/crypto.py` and `tests/test_crypto.py`. `database.py`
+  now always reads plain JSON — from the frozen resource root's bundled
+  `data/` in a shipped build, or the repo's `data/` in a source checkout —
+  no bundle, no key, no `BundleError`/`crypto` import (new `DatabaseError`
+  replaces it).
+- `packaging/build.py`: `prepare_bundle()` replaced with `verify_data()`
+  (just checks the five JSON files parse); no more `_keyring.py` generation.
+  Dropped the now-meaningless `--bundle-only` flag.
+- `packaging/bf6tuner.spec`: `datas` now lists the five `data/*.json` files
+  directly (bundled under `data/` in the frozen app) instead of
+  `packaging/_build/bf6tuner.db`; dropped `bf6tuner._keyring` from
+  `hiddenimports`.
+- Dropped the `cryptography` dependency from `requirements.txt` and the CI
+  workflow's test-dependency install; dropped the now-pointless "Verify the
+  encrypted bundle builds" CI step.
+- Updated `.gitignore` (removed the `_keyring.py` line), README ("About the
+  database" section rewritten, no more "About encrypted"), and this file
+  (§1 module map, §3, §5, §6, §7 design-decisions list).
+- All tests pass locally (`PYTHONPATH=src python -m pytest tests -q`,
+  5 fewer than before since `test_crypto.py` is gone).
+- Next: produce a fresh exe via the GitHub Actions artifact per the usual
+  workflow, and confirm with the user whether it's still SmartScreen-blocked
+  on first run (expected — see the entry above and README) or whether they
+  want to scope a code-signing certificate next.
 
 ### 2026-09-07 (17) — Smart App Control has no override on this machine at all
 User's build kept getting blocked, and this time "Unblock" (which only

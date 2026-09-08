@@ -72,10 +72,9 @@ def local_commit() -> str:
     """The commit this running build was produced from, best effort.
 
     Frozen builds get it from ``_build_info.py``, written at build time by
-    ``packaging/build.py`` (mirroring ``_keyring.py``'s pattern - generated,
-    gitignored, regenerated every build). A source checkout falls back to
-    asking git directly, so a dev run of ``python -m bf6tuner`` gets a
-    meaningful answer too.
+    ``packaging/build.py`` (generated, gitignored, regenerated every build).
+    A source checkout falls back to asking git directly, so a dev run of
+    ``python -m bf6tuner`` gets a meaningful answer too.
     """
     try:
         from . import _build_info  # type: ignore[attr-defined]

@@ -12,10 +12,11 @@ a = Analysis(
     [str(ROOT / "packaging" / "launcher.py")],
     pathex=[str(ROOT / "src")],
     binaries=[],
-    # Only the encrypted bundle ships. The plain JSON in data/ is deliberately
-    # left out so a shipped build cannot fall back to editable files.
-    datas=[(str(BUILD / "bf6tuner.db"), ".")],
-    hiddenimports=["bf6tuner._keyring", "bf6tuner._build_info"],
+    # The settings database ships as plain JSON - see database.py's module
+    # docstring for why it's not encrypted.
+    datas=[(str(ROOT / "data" / f"{name}.json"), "data") for name in
+           ("gpu_db", "cpu_db", "cfg_commands", "ingame_settings", "system_tweaks")],
+    hiddenimports=["bf6tuner._build_info"],
     hookspath=[],
     runtime_hooks=[],
     excludes=[

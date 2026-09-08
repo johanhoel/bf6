@@ -21,11 +21,9 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install test dependencies
-        run: python -m pip install --upgrade pip pytest cryptography
+        run: python -m pip install --upgrade pip pytest
       - name: Run tests
         run: python -m pytest tests -q
-      - name: Verify the encrypted bundle builds
-        run: python packaging/build.py --bundle-only
 
   build:
     name: Build BF6Tuner.exe
@@ -78,7 +76,7 @@ jobs:
 
           # The GUI binary has no stdout and a shell does not wait for it, so the
           # console build is the one a smoke test can meaningfully drive. Both are
-          # the same code and the same encrypted database.
+          # the same code and the same (plain JSON) database.
           & $cli --preset competitive --resolution 1920x1080 --refresh 240 `
                  --report "$env:RUNNER_TEMP\report.txt" --json "$env:RUNNER_TEMP\report.json"
           if ($LASTEXITCODE -ne 0) { throw "BF6Tuner-cli.exe exited with $LASTEXITCODE" }

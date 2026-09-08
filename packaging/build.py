@@ -1,10 +1,9 @@
-"""One-shot build: encrypt the database, generate the icon, produce BF6Tuner.exe.
+"""One-shot build: validate the database, generate the icon, produce BF6Tuner.exe.
 
 Run it from anywhere:
 
     python packaging/build.py                 # normal build
     python packaging/build.py --obfuscate     # additionally run PyArmor over the source
-    python packaging/build.py --bundle-only   # just produce the encrypted database
 
 Produces two binaries from one analysis. Windows fixes whether an executable is
 a GUI or a console program at link time, so BF6Tuner.exe is the double-clickable
@@ -12,19 +11,19 @@ GUI (no console window) and BF6Tuner-cli.exe is the same application with a
 console attached, which is what makes stdout, exit codes and output redirection
 work from a terminal.
 
-What "encrypted" means here, stated plainly: the settings database is AES-256-GCM
-encrypted and the executable verifies its integrity tag before using it, so the
-data cannot be read or edited with a text editor and a tampered bundle refuses to
-load. The key is inside the binary, because the binary must decrypt without a
-server. That defeats copying and casual modification. It does not defeat a
-debugger, and no client-side scheme can. --obfuscate raises the bar further by
-compiling the Python source through PyArmor before packaging.
+The settings database ships as plain JSON (`data/*.json`, bundled read-only by
+PyInstaller) rather than encrypted, on purpose: it's public BF6 hardware/settings
+reference data, not a secret, and an encrypted bundle used to bake a fresh random
+key into the binary on every single build, which meant every build - even with
+zero code changes - was a byte-different, never-before-seen file to Windows
+SmartScreen/Smart App Control. See README "About the database" / "Getting the
+executable". --obfuscate compiles the Python source through PyArmor before
+packaging, for anyone who still wants a bar against casual reading of the code.
 """
 
 from __future__ import annotations
 
 import argparse
-import base64
 import datetime as dt
 import json
 import os
@@ -42,7 +41,7 @@ DIST = ROOT / "dist"
 sys.path.insert(0, str(SRC))
 sys.path.insert(0, str(ROOT / "packaging"))
 
-from bf6tuner import __version__, crypto  # noqa: E402
+from bf6tuner import __version__  # noqa: E402
 from bf6tuner.database import DATASETS  # noqa: E402
 from make_icon import build_ico  # noqa: E402
 
@@ -51,35 +50,15 @@ def log(message: str) -> None:
     print(f"[build] {message}", flush=True)
 
 
-def prepare_bundle() -> tuple[Path, bytes]:
-    payload: dict[str, object] = {}
+def verify_data() -> None:
+    """Fail loudly here rather than in front of a user: check every dataset is
+    present and parses before PyInstaller bundles data/ as-is."""
     for name in DATASETS:
         path = DATA / f"{name}.json"
         if not path.is_file():
             raise SystemExit(f"Missing database source: {path}")
-        payload[name] = json.loads(path.read_text(encoding="utf-8"))
-
-    key = crypto.new_key()
-    header = {"version": __version__, "datasets": list(DATASETS)}
-    blob = crypto.pack(payload, key, header)
-
-    BUILD.mkdir(parents=True, exist_ok=True)
-    bundle = BUILD / "bf6tuner.db"
-    bundle.write_bytes(blob)
-
-    keyring = SRC / "bf6tuner" / "_keyring.py"
-    keyring.write_text(
-        '"""Generated at build time. Not checked in; regenerated on every build."""\n\n'
-        f'BUNDLE_KEY = "{base64.b64encode(key).decode()}"\n',
-        encoding="utf-8",
-    )
-    log(f"encrypted database -> {bundle} ({len(blob):,} bytes, key regenerated)")
-
-    # Fail loudly here rather than in front of a user.
-    restored, restored_header = crypto.unpack(bundle.read_bytes(), key)
-    assert set(restored) == set(DATASETS) and restored_header["version"] == __version__
-    log("bundle verified: decrypts, passes its integrity tag, contains every dataset")
-    return bundle, key
+        json.loads(path.read_text(encoding="utf-8"))
+    log(f"database verified: {len(DATASETS)} datasets present and parse cleanly (plain JSON, unencrypted)")
 
 
 def write_build_info() -> Path:
@@ -138,7 +117,7 @@ def run_pyarmor() -> Path:
     if shutil.which("pyarmor") is None:
         raise SystemExit(
             "--obfuscate needs PyArmor. Install it with: pip install pyarmor\n"
-            "Or drop the flag; the database stays encrypted either way."
+            "Or drop the flag; the build still works, just without source obfuscation."
         )
     output = BUILD / "obfuscated"
     if output.exists():
@@ -187,8 +166,6 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Build BF6Tuner.exe")
     parser.add_argument("--obfuscate", action="store_true",
                         help="Run PyArmor over the source before packaging.")
-    parser.add_argument("--bundle-only", action="store_true",
-                        help="Only produce the encrypted database bundle.")
     parser.add_argument("--no-clean", action="store_true", help="Reuse PyInstaller's cache.")
     args = parser.parse_args(argv)
 
@@ -197,10 +174,8 @@ def main(argv: list[str] | None = None) -> int:
             "only, so this will not produce a Windows .exe. Use the GitHub Actions "
             "workflow or run this on Windows.")
 
-    bundle, _ = prepare_bundle()
-    if args.bundle_only:
-        return 0
-
+    verify_data()
+    BUILD.mkdir(parents=True, exist_ok=True)
     build_ico(BUILD / "bf6tuner.ico")
     log(f"icon -> {BUILD / 'bf6tuner.ico'}")
     write_version_info()
@@ -212,7 +187,7 @@ def main(argv: list[str] | None = None) -> int:
     for path in built:
         log(f"done: {path} ({path.stat().st_size / (1024 * 1024):.1f} MB)")
     log("BF6Tuner is the GUI; BF6Tuner-cli is the same app with a working console.")
-    log("The database is encrypted inside the executable; no editable JSON ships with it.")
+    log("The database ships as plain JSON alongside the executable, unencrypted.")
     return 0
 
 

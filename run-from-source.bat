@@ -3,12 +3,12 @@ REM ============================================================================
 REM  Runs BF6 Tuner directly from source with Python, instead of the built
 REM  BF6Tuner.exe.
 REM
-REM  Why this exists: the compiled .exe bakes in a fresh encryption key on
-REM  every single build (see README "About encrypted"), so it is a brand-new,
-REM  never-before-seen file every time - Windows Smart App Control / SmartScreen
-REM  has no reputation for it and can block it outright, with no override, on
-REM  a machine where Smart App Control is enforced. Running from source sidesteps
-REM  that entirely: Smart App Control evaluates standalone executables, not
+REM  Why this exists: every real code change produces a brand-new, never-
+REM  before-seen compiled .exe (see README "About the database" / "Getting the
+REM  executable") - Windows Smart App Control / SmartScreen has no reputation
+REM  for it and can block it outright, with no override, on a machine where
+REM  Smart App Control is enforced. Running from source sidesteps that
+REM  entirely: Smart App Control evaluates standalone executables, not
 REM  scripts interpreted by an already-trusted python.exe.
 REM
 REM  Needs Python 3.11+ and the packages in requirements.txt installed

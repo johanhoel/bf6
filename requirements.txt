@@ -1,6 +1,5 @@
 # Runtime
 PySide6-Essentials>=6.6,<7
-cryptography>=42
 
 # Build and test
 pyinstaller>=6.6
