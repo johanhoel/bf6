@@ -347,6 +347,61 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-08 (22) — Visual polish pass: elevation, hover/pressed/focus states
+
+User asked to "make the app look even better" (picked from the same
+"what's next" menu as entry (21)'s PresentMon message fix). Scoped as a
+`theme.py`/`app.py` styling pass, informed by the `dataviz` skill's stat-tile
+and meter guidance (proportional hero figures, a meter's unfilled track
+should be a lighter step of its own ramp, not flat black) rather than
+guessing colors.
+
+- **Card elevation, two parts**: `QFrame#Card` background is now a subtle
+  vertical gradient (`BG_RAISED_TOP` → `BG_RAISED`) with a slightly brighter
+  `BORDER_LIGHT` instead of flat fill + the same border as everything else,
+  *and* `card()` (the shared factory in `app.py`) now applies a real
+  `QGraphicsDropShadowEffect` per card — QSS has no `box-shadow` equivalent,
+  so the depth had to be done in Python, not the stylesheet.
+- **Interactive states that were simply missing before**: buttons had a
+  hover state (border-color only, no background change) and *no* pressed
+  state at all; inputs (`QComboBox`/`QSpinBox`/`QLineEdit`) had no `:focus`
+  styling whatsoever, so keyboard/tab focus fell back to Qt's default
+  platform focus rect, which doesn't match a custom dark theme. Added
+  `BG_HOVER`/`BG_PRESSED` fills for buttons (including `Primary` and
+  `Preset`), and an `ACCENT` focus border for every input, plus a checkbox
+  indicator hover state.
+- **Tabs**: selected tab now gets a 2px `ACCENT` bottom underline (was a
+  flat background swap only) — reads more like an active-state indicator,
+  less like just "a different panel."
+- **Meter track**: `QProgressBar`'s unfilled track was `BG_SUNKEN` (flat,
+  near-black) — changed to `ACCENT_TRACK`, a lighter step of the accent
+  ramp, so a partially-filled bar reads as "on the same ramp" per the
+  meter contract in the `dataviz` skill rather than "blue chunk on black."
+- **Hero figures** (`QLabel#Hero` — the four big FPS numbers): 34px → 37px
+  with `-0.5px` letter-spacing for a tighter, more confident numeral read.
+  Kept proportional (not tabular) figures, which was already correct — Qt
+  style sheets don't support `font-variant-numeric` and the default is
+  proportional anyway, matching the skill's guidance for a standalone value.
+- **Verification, and its limits**: could not construct the real
+  `MainWindow` under `QT_QPA_PLATFORM=offscreen` to visually smoke-test —
+  it crashes on construction with no stderr output and a bare exit code 127,
+  confirmed **pre-existing** (identical on the last commit before this
+  session's edits, via `git stash`) and NOT something introduced by these
+  changes. Worse than the already-known "offscreen can't verify visuals"
+  limitation ([[bf6-architecture]] / this file) - this is a hard crash, not
+  just unreliable rendering. Not investigated further this session (out of
+  scope for a styling pass, and doesn't affect the real shipped app - it
+  only happens under headless/offscreen, which no real user hits). **Flagged
+  for whoever next needs offscreen Qt testing in this repo**: don't assume
+  `MainWindow(db)` is constructible offscreen without checking first.
+  Instead verified narrowly: `theme.STYLESHEET` parses with no Qt errors
+  under offscreen, and `card()` (with its new drop-shadow effect) constructs
+  and shows cleanly standalone. **Real visual judgment still needs an actual
+  screenshot from the user** — same caveat as every previous polish pass in
+  this file.
+- All 190 tests pass (no test exercises `theme.py`/styling directly).
+  Followed the standing build/release workflow (GitHub Actions artifact).
+
 ### 2026-09-08 (18) — Removed database encryption
 
 - User asked to "re-think" the app and make it unencrypted so Windows would
