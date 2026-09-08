@@ -363,17 +363,6 @@
       "gen": "zen5"
     },
     {
-      "id": "ryzen 9 9950x3d2",
-      "vendor": "amd",
-      "cores": 16,
-      "threads": 32,
-      "score": 228,
-      "hybrid": false,
-      "x3d": true,
-      "ccds": 2,
-      "gen": "zen5"
-    },
-    {
       "id": "core ultra 5 245k",
       "vendor": "intel",
       "cores": 14,

@@ -613,3 +613,30 @@ def test_unverified_settings_are_not_comparable_to_a_real_profile(db):
     comparison = compare.build(db, rec, "", "")
     unknown_ids = {c.setting_id for c in comparison.unknown}
     assert unknown_ids.issuperset(UNVERIFIED_IDS)
+
+
+# display_mode/texture_filtering/camera_shake were also missing a profsave_key
+# with no confidence flag at all - found in an audit and flagged unverified
+# for consistency with the settings above. Not folded into UNVERIFIED_IDS:
+# display_mode/texture_filtering only have 3 enum options (0-2), so the
+# shared "force an override of 3" shape above doesn't fit them cleanly.
+NEWLY_UNVERIFIED = (("display_mode", 1), ("texture_filtering", 1), ("camera_shake", 55))
+
+
+@pytest.mark.parametrize("setting_id,override_value", NEWLY_UNVERIFIED)
+def test_newly_flagged_unverified_settings(db, setting_id, override_value):
+    rec = recommend(db, make_profile(), Target(preset="competitive"))
+    choice = next(c for c in rec.settings if c.setting_id == setting_id)
+    setting = db.setting(setting_id)
+    assert setting["confidence"] == "unverified"
+    assert setting.get("profsave_key") is None
+    assert choice.value is not None
+
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       overrides={setting_id: override_value})
+    forced_choice = next(c for c in forced.settings if c.setting_id == setting_id)
+    assert forced_choice.overridden and forced_choice.value == override_value
+
+    fake_key = f"GstRender.{setting_id}"
+    plan = writer.profsave_plan(forced, {fake_key: "0"})
+    assert all(key != fake_key for key, _, _ in plan)

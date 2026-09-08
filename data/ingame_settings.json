@@ -122,6 +122,7 @@
       "id": "display_mode",
       "label": "Display Mode",
       "menu": "Video > Basic",
+      "confidence": "unverified",
       "type": "enum",
       "options": [
         {
@@ -148,7 +149,7 @@
         "cpu": 1,
         "vram": 0
       },
-      "note": "Exclusive fullscreen bypasses the desktop compositor: lower latency, and it is a prerequisite for G-Sync/FreeSync behaving properly. Use borderless only if you genuinely need to alt-tab constantly.",
+      "note": "Exclusive fullscreen bypasses the desktop compositor: lower latency, and it is a prerequisite for G-Sync/FreeSync behaving properly. Use borderless only if you genuinely need to alt-tab constantly. Unverified: not confirmed against a real BF6 profile, so it is not written to your profile automatically - set it by hand.",
       "cost": {
         "0": {
           "gpu": 0
@@ -528,6 +529,7 @@
       "id": "texture_filtering",
       "label": "Texture Filtering",
       "menu": "Video > Advanced",
+      "confidence": "unverified",
       "type": "enum",
       "options": [
         {
@@ -554,7 +556,7 @@
         "cpu": 0,
         "vram": 1
       },
-      "note": "Anisotropic filtering keeps ground textures sharp at a distance. It has been effectively free on every GPU made in the last decade. Max it regardless of preset.",
+      "note": "Anisotropic filtering keeps ground textures sharp at a distance. It has been effectively free on every GPU made in the last decade. Max it regardless of preset. Unverified: not confirmed against a real BF6 profile, so it is not written to your profile automatically - set it by hand.",
       "cost": {
         "0": {
           "gpu": -0.7
@@ -1619,6 +1621,7 @@
       "id": "camera_shake",
       "label": "Camera Shake",
       "menu": "Video > Advanced",
+      "confidence": "unverified",
       "type": "slider",
       "min": 0,
       "max": 100,
@@ -1634,7 +1637,7 @@
         "cpu": 0,
         "vram": 0
       },
-      "note": "Costs nothing to render, but it moves your crosshair for you during suppression and explosions. Minimum for anyone trying to win a gunfight.",
+      "note": "Costs nothing to render, but it moves your crosshair for you during suppression and explosions. Minimum for anyone trying to win a gunfight. Unverified: not confirmed against a real BF6 profile, so it is not written to your profile automatically - set it by hand.",
       "tradeoff": {
         "lower": {
           "pros": [

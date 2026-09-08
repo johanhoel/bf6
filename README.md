@@ -305,7 +305,7 @@ Five JSON datasets under `data/`, bundled as plain files at build time (see
 | `gpu_db.json` | 78 GPUs — VRAM, relative BF6 performance index, DLSS/FSR/XeSS support, frame-generation capability, ray tracing strength |
 | `cpu_db.json` | 60 CPUs — core/thread counts, hybrid topology, X3D and chiplet layout, estimated CPU-limited FPS, plus a fallback heuristic for anything not listed |
 | `cfg_commands.json` | 39 `User.cfg` commands, each with a **confidence level** (`documented` / `community` / `legacy`), a **risk level**, a hardware policy, an explanation, and pros/cons for the 19 that are actually emitted |
-| `ingame_settings.json` | 39 in-game settings with per-preset values, VRAM gates, a per-option **cost curve** in percent of frame time, and **directional pros and cons** for raising or lowering each one. 4 are marked `confidence: unverified` — plausible additions (sharpening, view/LOD distance, reflection quality, weapon FOV) not yet confirmed against a real BF6 profile, so they carry no profile key and are never written automatically |
+| `ingame_settings.json` | 39 in-game settings with per-preset values, VRAM gates, a per-option **cost curve** in percent of frame time, and **directional pros and cons** for raising or lowering each one. 7 are marked `confidence: unverified` — sharpening, view/LOD distance, reflection quality, and weapon FOV are plausible additions never sourced from a confirmed profile; display mode, texture filtering, and camera shake were found missing the same flag in an audit and brought in line. None of the 7 carry a profile key, so none are ever written automatically |
 | `system_tweaks.json` | 14 OS/BIOS/driver checks with trigger conditions |
 
 Commands are marked `legacy` when they are real Frostbite console variables from
@@ -332,7 +332,7 @@ only thing that needs changing.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests -q          # 190 tests
+python -m pytest tests -q          # 193 tests
 PYTHONPATH=src python -m bf6tuner --preset competitive   # CLI, runs on Linux too
 ```
 

@@ -347,6 +347,66 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-08 (23) — Audited the tuning data itself, fixed what an audit can safely fix
+
+User asked "any other settings we could tweak" after the visual pass; picked
+"the BF6 game settings the app recommends" over "the app's own look," then
+picked all of: GPU/CPU audit, preset tuning, new commands/tweaks, promoting
+`unverified` settings. Did the self-contained part (the audit); the other
+three are blocked on the user (which preset feels off and how, what
+command/tweak they have in mind, whether they have a real profile dump) —
+asked, not yet answered as of this entry.
+
+Audit method: structural checks across all 5 datasets (duplicate
+ids/keys, GPU score-ordering inversions within a generation) rather than
+trying to recall live hardware-market state from memory, which risks
+asserting something that stopped being true after the model's training
+cutoff. Two real findings, both fixed:
+
+- **Dead CPU entry, deleted**: `cpu_db.json` had `"id": "ryzen 9 9950x3d2"`
+  (score 228) sitting next to the real `"ryzen 9 9950x3d"` (score 212).
+  `match_cpu` substring-matches against the detected CPU name string — no
+  real Windows-reported name contains the literal substring `9950x3d2` (not
+  a real AMD product), so this entry could never match anything. Confirmed
+  via `db.cpus` inspection before deleting, not just eyeballing the id.
+- **3 settings silently missing the `unverified` flag, now added**:
+  `display_mode`, `texture_filtering`, `camera_shake` had no `profsave_key`
+  *and* no `confidence` field at all — meaning `writer.profsave_plan` already
+  correctly never wrote them (the "only touch keys already present" guard is
+  structural, not gated on the flag), but the UI's `"(unverified)"` badge
+  (`ui/app.py:1190`, gated strictly on `confidence == "unverified"`) never
+  showed for them, so they looked exactly like fully-confirmed settings to a
+  user despite being just as unconfirmed as `sharpening`/`view_distance`/
+  `reflection_quality`/`weapon_fov`. Verified `resolution` and `upscaler`
+  (also keyless) are legitimately different — they're the documented
+  special-cased ids handled elsewhere in `engine.py`, not silently dropped —
+  by grepping for their id strings in `engine.py`/`writer.py`/`compare.py`
+  and finding real handling, then doing the same grep for the other three
+  and finding *nothing*, confirming they were plain oversights, not
+  intentional special-casing.
+  - Added `"confidence": "unverified"` plus the standard disclaimer sentence
+    to each entry's `note`, matching the existing four exactly.
+  - New test `test_newly_flagged_unverified_settings` (parametrized, separate
+    from `UNVERIFIED_IDS` because `display_mode`/`texture_filtering` only
+    have 3 enum options, not 4, so the existing tests' `value=3` override
+    shape doesn't fit them) covers all three: flagged, overridable, never
+    reaches a `profsave_plan` write.
+  - `unverified` count is now 7, not 4 — updated the one place that stated a
+    count (README's database table).
+- Confirmed **no duplicate ids/keys and no score-ordering inversions**
+  anywhere else across `gpu_db` (95 GPUs), `cpu_db` (61 CPUs after the
+  deletion), `cfg_commands` (39), `system_tweaks` (14), `ingame_settings`
+  (39) — checked programmatically, not by eye.
+- All 193 tests pass (190 + 3 new). Followed the standing build/release
+  workflow.
+- **Not done, waiting on the user**: preset target-curve tuning, new
+  `cfg_commands`/`system_tweaks` entries, promoting the (now 7)
+  `unverified` settings to confirmed — all need specifics only the user has
+  (a felt preset complaint, a specific command/tweak, a real profile dump).
+  Don't guess at any of these three from general knowledge; that's exactly
+  the "propose without fabricating" line this file and the settings' own
+  `unverified_settings_note` already draw.
+
 ### 2026-09-08 (22) — Visual polish pass: elevation, hover/pressed/focus states
 
 User asked to "make the app look even better" (picked from the same
