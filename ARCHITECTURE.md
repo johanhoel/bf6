@@ -417,24 +417,31 @@ symptom as before, but this time cleanly isolated:
   the calling process enables them) and does *not* indicate the right was
   stripped by Group Policy (if it had been, the privilege wouldn't appear in
   the list at all).
-- **Working conclusion**: this is a Windows 11 Enterprise (IT-managed)
-  machine, and the combination of "fully elevated Administrator token, right
-  still present but blocked" points at something intercepting ETW
-  trace-session creation above the normal OS ACL layer — most likely a
-  corporate EDR/endpoint-security agent, which commonly restrict ETW/kernel
-  tracing regardless of local admin rights precisely because malware abuses
-  the same APIs. **Not fixable from inside BF6 Tuner or from any local
-  Windows setting** — flagged to the user as an IT/security-team question
-  (ask whether ETW/performance-tracing tools are policy-blocked on managed
-  devices, and whether their EDR shows a blocked-event for
-  `PresentMon-2.5.1-x64.exe` around the test time).
-- **Not yet confirmed** — this is the leading hypothesis from process of
-  elimination (subprocess-launch bug ruled out, GPO-privilege-removal ruled
-  out), not a verified root cause. If the user gets an answer from IT, or
-  tries PresentMon on a different (non-corporate) machine and it works
-  there, that would confirm it; record the outcome here when known. Next
-  session: don't re-run the elevation/PID isolating tests already done in
-  entries (12)–(15) and this one — start from "ask IT" instead.
+- **Correction, same session: this is a personal PC, not IT-managed.** The
+  Windows 11 *Enterprise* edition led to a wrong first guess (corporate
+  EDR/Group Policy blocking ETW regardless of local admin) — the user
+  corrected this directly. Retracted; don't assume "Enterprise edition"
+  implies "corporate-managed machine" again, here or elsewhere.
+- **Revised hypothesis, not yet tested**: on a personal PC with an RTX 5090,
+  the more likely explanation is a *competing ETW consumer* already holding
+  the same present/frame-time provider — NVIDIA's app overlay (Instant
+  Replay/Performance Overlay), GeForce Experience, Xbox Game Bar, or
+  RTSS/MSI Afterburner all hook the same present events, and a session
+  already owned by one of those (possibly running as a service under a
+  different account) can produce `access denied` for a second consumer even
+  from a fully elevated caller — `--stop_existing_session` only helps for a
+  *same-named, same-owner* stale session, not a live foreign one. Secondary
+  possibility: third-party antivirus (not just Defender) blocking
+  ETW/performance-tracing APIs as a heuristic, same mechanism as the
+  corporate-EDR guess just without the corporate part. A stuck leftover
+  session from an earlier crashed capture (clears on reboot) is a simpler
+  third possibility.
+- **Next diagnostic (not yet run)**: `logman query -ets` in the same
+  elevated shell, to list every active ETW session and check for anything
+  PresentMon-/NVIDIA-/present-related already running; also check whether
+  GeForce Experience/NVIDIA app overlay, Xbox Game Bar, or RTSS/Afterburner
+  is running at capture time. Update this entry with the result before
+  trying anything else — don't re-guess "corporate policy" again.
 
 ### 2026-09-07 (17) — Smart App Control has no override on this machine at all
 User's build kept getting blocked, and this time "Unblock" (which only
