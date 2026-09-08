@@ -366,6 +366,44 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-08 (27) — Row height, round 4: stopped guessing, started measuring
+
+User: "the text in config is still almost unreadable as the text is larger
+than the cell itself" - after three previous rounds of hand-picked row-
+height constants (26px, then higher, most recently 29/30px), still too
+tight. Pattern across all of them: pick a number by eye on one screen,
+report back tight on another. That's the actual bug - a constant tuned on
+one machine's font/DPI config has no reason to be right on a different one.
+
+Fix this time is different in kind, not just a bigger number: measured
+`_NoScrollComboBox`/`_NoScrollSpinBox`'s real `sizeHint()` under the app's
+actual stylesheet, offscreen, before touching anything -
+`combo.sizeHint().height()` = 28, `spin.sizeHint().height()` = 31 in this
+environment (the tallest cell editor by a clear margin; `TableButton`
+"Reset" is only 16). The settings table's previous 30px and cfg table's 29px
+were both already *below* the spinbox's own measured minimum - not "tight,"
+literally not enough room, full stop, in this environment let alone a
+higher-DPI or larger-font one.
+
+- New `_editor_row_height()` (`ui/app.py`): builds one throwaway styled
+  combo + spin box, takes the taller `sizeHint().height()`, adds an 8px
+  margin, floors at 32. Cached (`self._row_height_cache`) since it only
+  needs computing once per run. Self-correcting for whatever font/DPI the
+  machine actually has, instead of a constant baked in at dev time on a
+  different one - this should be the last round of this specific bug.
+- `_make_table` now sets `verticalHeader().setDefaultSectionSize()` from
+  this, replacing the two hardcoded call-site values (30 for
+  `settings_table`, 29 for `cfg_table` - both gone). `_make_header_row`'s
+  group-header rows use the same computed height too, so headers and data
+  rows read as one consistent table instead of two different sizes.
+- Verified the computation offscreen: 31px tallest hint -> 39px row height
+  in this environment (up from 29/30) - all 201 tests still pass (this
+  isn't tested behavior directly, no test constructs the real table
+  offscreen - see entry (22)'s noted `MainWindow`-construction crash,
+  unrelated and still unfixed). **Not verified on the user's actual
+  machine/DPI/font config** - ask for a screenshot after the next build
+  before considering this closed, same as every previous round of this bug.
+
 ### 2026-09-08 (26) — Real self-update: download, replace, relaunch
 
 User asked for the Update button to actually download the latest version,
