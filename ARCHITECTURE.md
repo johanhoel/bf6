@@ -347,6 +347,44 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-08 (24) — A stale local `_build_info.py` was lying to the update checker
+
+User ran `run-from-source.bat` after this session's changes and got "Update
+available (23 commits)" for code that *was* the tip of `main` — every commit
+listed as "ahead" was one already made and pushed earlier this same session.
+
+Root cause: `src/bf6tuner/_build_info.py` (gitignored, `packaging/build.py`-
+generated) existed locally on disk, left over from a **local build run on
+2026-09-07** — before the "always use the GitHub Actions artifact, never a
+local build" workflow was settled ([[bf6-build-workflow]]). Nothing ever
+deletes this file once written (it's gitignored, so `git` operations don't
+touch it), and `update.py`'s `local_commit()` checked for it *before* falling
+back to `git rev-parse HEAD` — unconditionally, not gated on `sys.frozen` —
+so a source checkout run (`run-from-source.bat` / `python -m bf6tuner`)
+picked up that old build's baked-in SHA instead of asking git directly, even
+though the function's own docstring said it "falls back to asking git
+directly." The docstring described the intent; the code didn't implement it.
+
+Fixed properly, not just papered over:
+- Deleted the stale `_build_info.py` (immediate fix for this machine).
+- **Also fixed the actual bug**: `local_commit()` now checks `sys.frozen`
+  *first* — only a genuinely frozen build reads `_build_info.py` at all; a
+  source checkout always asks git directly, full stop, regardless of
+  whether a stale generated file happens to be sitting there. Verified both
+  ways: deleted the file and confirmed `local_commit()` matches
+  `git rev-parse HEAD`; *recreated* the stale file with the old 2026-09-07
+  SHA and confirmed `local_commit()` still returns the real current HEAD,
+  not the stale one — proving the fix, not the deletion, is what matters.
+- This will recur for any source checkout that has ever had a local
+  `packaging/build.py` run against it, on any machine. Nobody needs to
+  remember to delete `_build_info.py` by hand anymore — the code now does
+  the right thing whether or not it's there.
+- No test previously exercised `local_commit()`'s branching (only a smoke
+  test that it returns a string, still passes); network-dependent
+  `check_for_update()` is documented as exercised by hand, not in CI, and
+  this was found and fixed the same way. All 193 tests still pass — this
+  change touches no tested behavior directly, just which branch runs first.
+
 ### 2026-09-08 (23) — Audited the tuning data itself, fixed what an audit can safely fix
 
 User asked "any other settings we could tweak" after the visual pass; picked
