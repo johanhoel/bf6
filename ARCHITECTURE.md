@@ -436,12 +436,50 @@ symptom as before, but this time cleanly isolated:
   corporate-EDR guess just without the corporate part. A stuck leftover
   session from an earlier crashed capture (clears on reboot) is a simpler
   third possibility.
-- **Next diagnostic (not yet run)**: `logman query -ets` in the same
-  elevated shell, to list every active ETW session and check for anything
-  PresentMon-/NVIDIA-/present-related already running; also check whether
-  GeForce Experience/NVIDIA app overlay, Xbox Game Bar, or RTSS/Afterburner
-  is running at capture time. Update this entry with the result before
-  trying anything else — don't re-guess "corporate policy" again.
+- **Root cause found and confirmed, later the same day (resumed session, ran
+  directly in an elevated shell instead of relaying commands)**: `logman
+  query -ets` showed a `PMService` trace session running, and
+  `Get-Service`/registry lookup identified it as belonging to a fully
+  *installed* **Intel(R) PresentMon 2.5.1.0** app (Windows Installer product
+  `{1CF8EE31-DBD1-4E97-8C61-AF09822459B6}`), not just the standalone console
+  exe the user thought they were using — the MSI in Downloads had actually
+  been run, installing a `PresentMonSharedService` Windows service plus a
+  `PMService` ETW Data Collector Set. That's the "competing ETW consumer"
+  guessed above, confirmed.
+  - Stopping the service (`Stop-Service PresentMonSharedService`) did **not**
+    stop the session — `PMService` stayed `Running` in `logman query -ets`
+    after the service was `Stopped`. The session outlives its owning process.
+  - `logman stop "PMService" -ets` → **"Access is denied. Try running this
+    command as an administrator"** — from a shell independently verified
+    elevated (`([Security.Principal.WindowsPrincipal]...).IsInRole(...Administrator)`
+    → `True`). So the session's ACL denies control to the Administrators
+    group itself, not just to a non-elevated caller — the same shape of
+    "elevated but still denied" anomaly as the original PresentMon failure,
+    now reproduced one layer down on the session itself.
+  - Fully uninstalled the package (`msiexec /x {1CF8EE31-...} /qn`, exit code
+    0) at the user's confirmation. Service and its uninstall-registry entry
+    both gone afterward. **`PMService` was still `Running` in `logman query
+    -ets` even after the uninstall** — genuinely orphaned, not just
+    service-tied.
+  - Checked and ruled out two persistence mechanisms that would explain a
+    session surviving this long: no `HKLM:\SYSTEM\CurrentControlSet\Control\
+    WMI\Autologger\PMService` key (not a boot-time autologger) and no
+    matching `Get-ScheduledTask` entry. So nothing will resurrect or
+    re-arm it — it's just a live kernel session nobody left with rights to
+    stop.
+  - **Conclusion: only a reboot clears it.** That's the only remaining lever
+    for a session with no autologger/task tie and an ACL nothing here can
+    touch. Told the user to reboot, then retest recording with the standalone
+    `PresentMon-2.5.1-x64.exe` (unaffected by the uninstall — separate file).
+    **Not yet confirmed working post-reboot** — that's the next thing to
+    verify, not a fresh investigation.
+  - Lesson for next time this class of bug shows up in this app: `run_capture`
+    could plausibly detect "access denied" + a same-named session already
+    `Running` via `logman query -ets` itself and say "a PresentMon-related
+    Windows service/trace session is already active — check for a fully
+    installed PresentMon app, not just the standalone exe" rather than only
+    ever suggesting elevation. Not built; flagged as a possible follow-up if
+    this recurs for another user.
 
 ### 2026-09-07 (17) — Smart App Control has no override on this machine at all
 User's build kept getting blocked, and this time "Unblock" (which only
