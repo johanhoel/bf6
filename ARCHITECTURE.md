@@ -387,6 +387,54 @@ anything the next session needs to know. Most recent first.
   workflow, and confirm with the user whether it's still SmartScreen-blocked
   on first run (expected — see the entry above and README) or whether they
   want to scope a code-signing certificate next.
+- Built and fetched the fresh artifact same session; separately, while
+  testing, found and fixed a stale `presentmon_exe` pref pointing at
+  `dist/BF6Tuner.exe` itself instead of PresentMon (user-side misconfig, not
+  a code bug — surfaced as "usage: bf6tuner" in the "Recording failed"
+  dialog, which is this app's own `argparse` prog name, proving the
+  "PresentMon" it launched was actually itself). Re-pointed it at the real
+  `PresentMon-2.5.1-x64.exe` the user had in Downloads.
+
+### 2026-09-08 (19) — PresentMon "access denied" isolated to the machine, not the app
+
+Continuing the benchmark-elevation saga from entry (15)/(14): with the
+`presentmon_exe` pref fixed (above), recording still failed with "PresentMon
+still needs administrator rights even targeting PID directly" — same
+symptom as before, but this time cleanly isolated:
+
+- Confirmed BF6 Tuner was already running elevated (Administrator) and still
+  failed — reproducing the entry-(15) anomaly (child process should inherit
+  the parent's elevated token; it didn't help).
+- **Isolating test**: ran PresentMon *directly* from an elevated PowerShell,
+  completely bypassing BF6 Tuner's subprocess launch —
+  `& "PresentMon-2.5.1-x64.exe" --process_id <pid> --output_file ... --timed 10 ...`
+  — got the identical `error: failed to start trace session: access denied.`
+  **This rules out a bug in `benchmark.py`'s subprocess launch** — the
+  problem is not how BF6 Tuner invokes the child process.
+- Checked `whoami /priv | findstr SystemProfile` in that same elevated
+  shell: `SeSystemProfilePrivilege` **is present** in the token, just shown
+  `Disabled` — which is normal/expected (most privileges sit disabled until
+  the calling process enables them) and does *not* indicate the right was
+  stripped by Group Policy (if it had been, the privilege wouldn't appear in
+  the list at all).
+- **Working conclusion**: this is a Windows 11 Enterprise (IT-managed)
+  machine, and the combination of "fully elevated Administrator token, right
+  still present but blocked" points at something intercepting ETW
+  trace-session creation above the normal OS ACL layer — most likely a
+  corporate EDR/endpoint-security agent, which commonly restrict ETW/kernel
+  tracing regardless of local admin rights precisely because malware abuses
+  the same APIs. **Not fixable from inside BF6 Tuner or from any local
+  Windows setting** — flagged to the user as an IT/security-team question
+  (ask whether ETW/performance-tracing tools are policy-blocked on managed
+  devices, and whether their EDR shows a blocked-event for
+  `PresentMon-2.5.1-x64.exe` around the test time).
+- **Not yet confirmed** — this is the leading hypothesis from process of
+  elimination (subprocess-launch bug ruled out, GPO-privilege-removal ruled
+  out), not a verified root cause. If the user gets an answer from IT, or
+  tries PresentMon on a different (non-corporate) machine and it works
+  there, that would confirm it; record the outcome here when known. Next
+  session: don't re-run the elevation/PID isolating tests already done in
+  entries (12)–(15) and this one — start from "ask IT" instead.
 
 ### 2026-09-07 (17) — Smart App Control has no override on this machine at all
 User's build kept getting blocked, and this time "Unblock" (which only
