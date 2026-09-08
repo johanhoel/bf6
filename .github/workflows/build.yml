@@ -11,6 +11,9 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: write  # needed to publish/update the rolling "latest" release below
+
 jobs:
   test:
     name: Tests (Linux)
@@ -109,3 +112,32 @@ jobs:
             dist/BF6Tuner-cli.exe
           if-no-files-found: error
           retention-days: 90
+
+      # A GitHub Actions artifact (above) requires an authenticated API call
+      # to download and expires after 90 days - fine for a human clicking
+      # through a browser, useless for BF6 Tuner's own in-app self-updater
+      # (bf6tuner.update.download_update), which needs a public, permanent
+      # URL and can't safely embed a token. So every push to main also
+      # publishes/updates a single rolling release tagged "latest" - not a
+      # real version tag, just a stable place for the newest build to live,
+      # matching this project's existing "every push is a build" model
+      # rather than introducing semantic versioning.
+      - name: Publish rolling "latest" release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = "Auto-published from every push to main - not a stable version tag, " +
+                   "just a permanent, unauthenticated download URL for BF6 Tuner's own " +
+                   "in-app updater (the Actions artifact above requires a token and expires " +
+                   "after 90 days). Built from commit ${{ github.sha }}."
+          gh release view latest --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload latest dist/BF6Tuner.exe dist/BF6Tuner-cli.exe `
+              --repo "${{ github.repository }}" --clobber
+            gh release edit latest --repo "${{ github.repository }}" --notes "$notes"
+          } else {
+            gh release create latest dist/BF6Tuner.exe dist/BF6Tuner-cli.exe `
+              --repo "${{ github.repository }}" --title "Latest build (rolling)" --notes "$notes"
+          }

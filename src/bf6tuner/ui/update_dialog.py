@@ -1,23 +1,57 @@
 """Update-available dialog: what changed on `main` since this build, and where
-to get it. There is no installer or auto-download - see bf6tuner.update's
-docstring for why - so this only ever opens a browser tab, never writes files.
+to get it.
+
+Two ways to actually get it, and both are offered, not just one:
+- **Open GitHub Actions build** - always available, opens a browser tab. No
+  files written, nothing automatic - the original, still-default path.
+- **Download and install now** - only for a genuinely frozen build
+  (`sys.frozen`; a source checkout has nothing for this to replace), fetches
+  the new exe from GitHub's rolling "latest" release in the background, then
+  swaps and relaunches. See `bf6tuner.update`'s module docstring for the full
+  design (why a Release and not the Actions artifact, why this only applies
+  to a frozen build, why the swap needs a detached helper script).
 """
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QUrl
+import sys
+import tempfile
+from pathlib import Path
+
+from PySide6.QtCore import Qt, QThread, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
-    QDialog, QDialogButtonBox, QLabel, QListWidget, QListWidgetItem, QPushButton, QVBoxLayout,
+    QApplication, QDialog, QDialogButtonBox, QLabel, QListWidget, QListWidgetItem,
+    QMessageBox, QProgressBar, QPushButton, QVBoxLayout,
 )
 
 from .. import update
+
+
+class _DownloadWorker(QThread):
+    finished_ok = Signal(Path)
+    failed = Signal(str)
+
+    def __init__(self, dest: Path) -> None:
+        super().__init__()
+        self.dest = dest
+
+    def run(self) -> None:  # pragma: no cover - exercised by hand, not in CI
+        try:
+            path = update.download_update(self.dest)
+        except update.SelfUpdateError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:  # never let a raw traceback surface here
+            self.failed.emit(f"Unexpected error: {exc}")
+        else:
+            self.finished_ok.emit(path)
 
 
 class UpdateDialog(QDialog):
     def __init__(self, info: update.UpdateInfo, parent=None) -> None:
         super().__init__(parent)
         self.info = info
+        self._worker: _DownloadWorker | None = None
         self.setWindowTitle("Check for updates")
         self.resize(560, 420)
 
@@ -50,8 +84,21 @@ class UpdateDialog(QDialog):
             hint.setObjectName("Dim")
             layout.addWidget(hint)
 
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 0)  # indeterminate - a single download has no % to show
+        self.progress.setVisible(False)
+        layout.addWidget(self.progress)
+
         buttons = QDialogButtonBox()
         if info.status in ("update_available", "unknown"):
+            if getattr(sys, "frozen", False):
+                self.install_button = QPushButton("Download and install now")
+                self.install_button.setToolTip(
+                    "Downloads the new build from GitHub's 'latest' release, replaces this "
+                    "exe, and relaunches automatically."
+                )
+                self.install_button.clicked.connect(self._start_download)
+                buttons.addButton(self.install_button, QDialogButtonBox.ActionRole)
             download = QPushButton("Open GitHub Actions build →")
             download.setToolTip(
                 "Opens the Actions run for the latest commit on main, where the built "
@@ -63,8 +110,8 @@ class UpdateDialog(QDialog):
             compare = QPushButton("View full diff on GitHub")
             compare.clicked.connect(lambda: self._open(info.compare_url))
             buttons.addButton(compare, QDialogButtonBox.ActionRole)
-        close = buttons.addButton("Close", QDialogButtonBox.RejectRole)
-        close.clicked.connect(self.reject)
+        self.close_button = buttons.addButton("Close", QDialogButtonBox.RejectRole)
+        self.close_button.clicked.connect(self.reject)
         layout.addWidget(buttons)
 
     def _heading_text(self) -> str:
@@ -101,3 +148,35 @@ class UpdateDialog(QDialog):
 
     def _open_commit(self, item: QListWidgetItem) -> None:
         self._open(item.data(Qt.UserRole))
+
+    # -- self-update -----------------------------------------------------
+
+    def _start_download(self) -> None:
+        self.install_button.setEnabled(False)
+        self.install_button.setText("Downloading...")
+        self.close_button.setEnabled(False)
+        self.progress.setVisible(True)
+
+        dest = Path(tempfile.gettempdir()) / "BF6Tuner-update" / Path(sys.executable).name
+        self._worker = _DownloadWorker(dest)
+        self._worker.finished_ok.connect(self._on_download_ok)
+        self._worker.failed.connect(self._on_download_failed)
+        self._worker.start()
+
+    def _on_download_ok(self, path: Path) -> None:
+        self.progress.setVisible(False)
+        try:
+            update.apply_update_and_relaunch(path)
+        except update.SelfUpdateError as exc:
+            self._on_download_failed(str(exc))
+            return
+        # The helper script is now waiting for this process to exit - do that
+        # cleanly rather than leaving the window open with nothing left to do.
+        QApplication.instance().quit()
+
+    def _on_download_failed(self, message: str) -> None:
+        self.progress.setVisible(False)
+        self.install_button.setEnabled(True)
+        self.install_button.setText("Download and install now")
+        self.close_button.setEnabled(True)
+        QMessageBox.warning(self, "Update failed", message)
