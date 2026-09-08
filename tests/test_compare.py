@@ -262,3 +262,29 @@ def test_comparison_uses_the_overridden_values(db):
     shadows = change_for(c, "shadow_quality")
     assert shadows is None, "current is Ultra and the override is Ultra, so nothing changes"
     assert any(u.setting_id == "shadow_quality" for u in c.unchanged)
+
+
+# -- closest_preset: guessing a starting preset from the real config ---------
+# Used for a genuine first-ever launch (see prefs.py / ui/app.py) so the app
+# doesn't have to hardcode a default that may not match what's actually saved.
+
+def test_closest_preset_picks_the_preset_with_fewest_changes(db, tmp_path):
+    """ULTRA_PROFSAVE is everything maxed out - manually confirmed to need 8
+    changes against the 'quality' preset's recommendation vs. 16-18 against
+    every other preset, so 'quality' must win."""
+    profsave = tmp_path / "PROFSAVE_profile"
+    profsave.write_text(ULTRA_PROFSAVE, encoding="utf-8")
+    base = Target(preset="competitive", width=2560, height=1440, refresh_hz=165)
+
+    result = compare.closest_preset(db, make_profile(), base, profsave, None)
+
+    assert result == "quality"
+
+
+def test_closest_preset_returns_none_without_a_profsave_file(db, tmp_path):
+    """Nothing to compare against yet - must not guess blind."""
+    base = Target(preset="competitive", width=2560, height=1440, refresh_hz=165)
+    missing = tmp_path / "does-not-exist"
+
+    assert compare.closest_preset(db, make_profile(), base, missing, None) is None
+    assert compare.closest_preset(db, make_profile(), base, None, None) is None

@@ -1,8 +1,21 @@
 """Small persisted preferences.
 
-Two things worth surviving a restart: paths the user corrected by hand, and
-per-setting values they chose instead of the engine's. Everything else is
-re-derived on every launch.
+Three things worth surviving a restart: paths the user corrected by hand,
+per-setting values they chose instead of the engine's, and the last-used
+preset/target toggles. Everything else is re-derived on every launch.
+
+That third one is the one exception worth explaining: resolution and
+refresh rate are genuinely re-detected from the real display every launch
+(see ``ui/app.py``'s ``_on_detected``), so those never need to be
+remembered here. The preset and the Target checkboxes (VRR, HDR, "I
+stream/record", frame generation, Thread.* overrides, legacy keys, the FPS
+overlay) are different: there is no reliable signal to *detect* most of
+them from the current config - Windows has no "is VRR enabled" query, and
+the in-game FPS overlay isn't even a setting BF6 tracks in its save file -
+so re-deriving them would mean guessing, which is exactly how the app used
+to open on a hardcoded "Competitive + overlay on" every single time
+regardless of what was actually set last. Remembering the last explicit
+choice is the only honest way to make the window match reality on open.
 """
 
 from __future__ import annotations
@@ -16,6 +29,7 @@ PATHS_FILE = "paths.json"
 OVERRIDES_FILE = "setting_overrides.json"
 CFG_OVERRIDES_FILE = "cfg_overrides.json"
 PROFILES_FILE = "profiles.json"
+TARGET_FILE = "target.json"
 
 
 def config_dir() -> Path:
@@ -103,6 +117,20 @@ def set_cfg_override(key: str, value: Any | None) -> dict[str, Any]:
 
 def clear_cfg_overrides() -> None:
     save_cfg_overrides({})
+
+
+# -- last-used preset/target toggles ------------------------------------------
+# See the module docstring for why this, alone among "derived" state, is
+# persisted rather than re-derived. Written on every change (same as the
+# per-setting overrides above) - it is a handful of scalars, not worth
+# debouncing.
+
+def load_target() -> dict[str, Any]:
+    return _read(TARGET_FILE)
+
+
+def save_target(values: dict[str, Any]) -> None:
+    _write(TARGET_FILE, values)
 
 
 # -- named profiles -----------------------------------------------------------
