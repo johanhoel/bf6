@@ -81,11 +81,16 @@ database.load()  ───┘         (matching,            │            └�
   as everywhere else external (see `update.py`); the path is remembered via
   `prefs.py`'s existing generic path-override mechanism (role
   `"presentmon_exe"`), no new storage needed.
-- **`update.py`** / **`_build_info.py`** — checks the GitHub API for whether
-  `main` has moved on since the commit this build was made from; never raises,
-  never auto-downloads. `_build_info.py` is build-generated (gitignored) and
-  holds the commit SHA baked into a shipped build; a source checkout falls
-  back to `git rev-parse HEAD`.
+- **`update.py`** / **`_build_info.py`** — `check_for_update()` checks the
+  GitHub API for whether `main` has moved on since the commit this build was
+  made from; never raises. `_build_info.py` is build-generated (gitignored)
+  and holds the commit SHA baked into a shipped build; a source checkout
+  falls back to `git rev-parse HEAD`. Since 2026-09-08, the same module also
+  has `download_update()`/`apply_update_and_relaunch()` — an actual
+  self-updater, frozen-build-only, with its own `SelfUpdateError` (raises,
+  unlike the passive check, since it's a button press). See §7's design
+  decision and the module's own docstring for why it fetches from a GitHub
+  **Release**, not the Actions artifact.
 
 ---
 
@@ -280,6 +285,15 @@ fixes GUI-vs-console at link time, so one binary can't do both.
 (triggering the GitHub Actions cloud build), and rebuilds both local
 executables.
 
+`.github/workflows/build.yml`'s `build` job also publishes/updates a single
+rolling GitHub **Release** tagged `latest` on every push to `main` (`gh
+release create`/`upload`, `contents: write` permission) — a public,
+permanent, unauthenticated download URL, which is what
+`bf6tuner.update.download_update()` fetches from. This is separate from,
+and in addition to, the `actions/upload-artifact` step just above it: the
+Actions artifact needs an authenticated API call and expires after 90 days,
+neither of which the in-app self-updater can rely on.
+
 ---
 
 ## 6. Tests (`tests/`)
@@ -335,10 +349,15 @@ tests as of the last README update).
   quietly reusing the settings' cost math for something it was never modelled
   for. Don't blur this distinction to make the UI "feel" more consistent —
   it would misrepresent what the numbers mean.
-- **There is no auto-update / auto-download.** `update.py` only ever compares
-  commits and opens a browser tab; nothing is fetched or executed
-  automatically, matching the "download it yourself" distribution model in
-  the README.
+- **Checking for an update never auto-downloads; installing one, if the user
+  explicitly clicks "Download and install now," does — and that's the one
+  deliberate exception, not a quiet erosion of the policy.** `check_for_update()`
+  still only ever compares commits; nothing happens from *that* automatically.
+  Actually fetching and applying a build is real, user-initiated
+  (`update.download_update`/`apply_update_and_relaunch`, added 2026-09-08),
+  gated to a frozen build only, and always offered *alongside*, never instead
+  of, the manual "Open GitHub Actions build" link — the user still always has
+  the option to look at what they're getting first.
 
 ---
 
@@ -346,6 +365,64 @@ tests as of the last README update).
 
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
+
+### 2026-09-08 (26) — Real self-update: download, replace, relaunch
+
+User asked for the Update button to actually download the latest version,
+and separately asked whether an installer would be better for managing
+that plus settings/config. Answered the installer question first (settings
+already persist in `%APPDATA%` regardless of install method; an installer
+would add a Start Menu entry and uninstaller but doesn't dodge SmartScreen
+and is real extra build/maintenance surface) — user picked portable
+self-update over building a real installer.
+
+- **The real prerequisite, not a detail**: GitHub Actions artifacts need an
+  authenticated API call and expire after 90 days - unusable for a shipped
+  app's own updater without embedding a credential. Added a `gh release
+  create`/`upload` step to `build.yml` (`contents: write` permission) that
+  publishes/updates a single rolling release tagged `latest` on every push
+  to `main` - a public, permanent URL, alongside (not instead of) the
+  existing Actions artifact upload. Matches the project's existing
+  "every push is a build" model rather than introducing real version tags.
+- `update.py`: new `SelfUpdateError` (raises - this is a button press, not
+  the passive startup check, same reasoning as `BenchmarkError`), `find_asset_url`
+  (pure, testable - looks up one release asset's URL, same split as
+  `parse_compare`), `download_update()` (fetches the current exe's
+  counterpart from the `latest` release into a temp path, sanity-checks the
+  bytes look like a real PE executable - size + `MZ` magic - before
+  accepting them, since a truncated download or a GitHub outage HTML page
+  must not get "installed"), and `apply_update_and_relaunch()` (writes a
+  tiny detached `.bat` that polls `tasklist` for this process's PID to
+  disappear, then moves the new exe into place, relaunches, deletes
+  itself - Windows won't let a running process overwrite its own file, so
+  there is no cleaner way to do this from inside the process being
+  replaced). Both refuse outright on a source checkout (`sys.frozen` gate)
+  - a checkout has nothing for this to swap; `git pull`/`UPDATE.bat` is
+  the right tool there, unchanged.
+- `ui/update_dialog.py`: new "Download and install now" button, shown only
+  when frozen, alongside the existing "Open GitHub Actions build" link -
+  never instead of it, so the user can still always look before they leap.
+  A `_DownloadWorker(QThread)` keeps the fetch off the UI thread; on success
+  it triggers the swap-and-relaunch then calls `QApplication.instance().quit()`
+  so the detached helper script's wait condition (this process's PID
+  disappearing) is actually met.
+- Verified what's verifiable without a real Windows relaunch: the dialog
+  constructs cleanly offscreen both with and without `sys.frozen` set
+  (confirming the button only appears when it should), `find_asset_url`
+  against hand-built release payloads, and that both self-update functions
+  correctly refuse a non-frozen run. **Not verified**: an actual live
+  download + swap + relaunch end to end - that needs a real frozen exe on
+  a real Windows machine, not this environment. Ask the user to try it
+  once a `latest` release exists (first push after this lands) and report
+  back before trusting this fully.
+- All 201 tests pass (196 + 5 new).
+- Also asked about, not started this session: full in-game settings
+  coverage including keyboard/mouse keybindings. Real scope, and blocked on
+  the same rule as the `unverified` settings mechanism - BF6's keybind
+  storage format (profsave keys, if any) is not something to guess at; it
+  needs a real reference (a profile dump showing bind entries, or
+  documented schema) before any code gets written. Follow up once the user
+  has that.
 
 ### 2026-09-08 (25) — Preset/target no longer hardcoded to Competitive + overlay-on every launch
 

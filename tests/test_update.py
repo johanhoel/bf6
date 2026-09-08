@@ -111,3 +111,49 @@ def test_friendly_error_ignores_a_403_that_is_not_the_rate_limit():
     message = update._friendly_error(_http_error(msg="access denied", remaining="12"))
     assert "rate limit" not in message.lower()
     assert "access denied" in message.lower()
+
+
+# -- self-update: asset lookup (pure) ----------------------------------------
+
+def _release_payload(*assets: tuple[str, str]) -> dict:
+    return {
+        "tag_name": "latest",
+        "assets": [{"name": name, "browser_download_url": url} for name, url in assets],
+    }
+
+
+def test_find_asset_url_matches_by_exact_name():
+    payload = _release_payload(
+        ("BF6Tuner.exe", "https://github.com/.../BF6Tuner.exe"),
+        ("BF6Tuner-cli.exe", "https://github.com/.../BF6Tuner-cli.exe"),
+    )
+    assert update.find_asset_url(payload, "BF6Tuner.exe") == "https://github.com/.../BF6Tuner.exe"
+    assert update.find_asset_url(payload, "BF6Tuner-cli.exe") == "https://github.com/.../BF6Tuner-cli.exe"
+
+
+def test_find_asset_url_returns_none_when_missing():
+    payload = _release_payload(("BF6Tuner.exe", "https://github.com/.../BF6Tuner.exe"))
+    assert update.find_asset_url(payload, "BF6Tuner-cli.exe") is None
+
+
+def test_find_asset_url_handles_an_empty_or_malformed_payload():
+    assert update.find_asset_url({}, "BF6Tuner.exe") is None
+    assert update.find_asset_url({"assets": None}, "BF6Tuner.exe") is None
+
+
+# -- self-update: frozen-only guard ------------------------------------------
+# download_update / apply_update_and_relaunch both refuse to run at all
+# outside a frozen build - this is the one thing safely testable on every
+# platform without mocking a Windows-only subprocess call or a real network
+# request: the guard must fire before any of that is ever reached.
+
+def test_download_update_refuses_a_source_checkout():
+    import pytest
+    with pytest.raises(update.SelfUpdateError, match="source checkout"):
+        update.download_update(Path("somewhere.exe"))
+
+
+def test_apply_update_refuses_a_source_checkout():
+    import pytest
+    with pytest.raises(update.SelfUpdateError, match="source checkout"):
+        update.apply_update_and_relaunch(Path("somewhere.exe"))

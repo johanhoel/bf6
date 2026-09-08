@@ -1,22 +1,42 @@
-"""Checks the GitHub repository for a newer build than the one running.
+"""Checks the GitHub repository for a newer build than the one running, and
+(new, 2026-09-08) can fetch and install one.
 
-There is no release/tag mechanism here (see README "Getting the executable"):
-every push to `main` builds on GitHub Actions and uploads the executables as a
-workflow artifact. So "is there an update" is answered by comparing the commit
-this build was made from against the tip of `main`, via the public GitHub REST
-API - no token needed for a public repo's read endpoints, and this module
-never pushes or writes anything anywhere.
+"Is there an update" is answered by comparing the commit this build was made
+from against the tip of `main`, via the public GitHub REST API - no token
+needed for a public repo's read endpoints.
 
-Never raises. Any network failure, malformed response, or unknown local
-commit comes back as an ``UpdateInfo`` with ``status="error"``/``"unknown"``
-rather than a traceback, so a flaky or offline connection cannot block
-startup - the same philosophy as ``hardware.detect()``.
+``check_for_update()`` never raises: any network failure, malformed response,
+or unknown local commit comes back as an ``UpdateInfo`` with
+``status="error"``/``"unknown"`` rather than a traceback, so a flaky or
+offline connection cannot block startup - the same philosophy as
+``hardware.detect()``.
+
+Actually fetching a build is different, and lives in its own section below
+(``download_update`` / ``apply_update_and_relaunch``) with its own exception
+type, ``SelfUpdateError`` - this *is* a user-initiated action (a button
+press), so it raises with a clear message on failure rather than failing
+silently, the same way ``BenchmarkError``/``BundleError`` do elsewhere in
+this app. It downloads from a **GitHub Release**, not the GitHub Actions
+artifact ``check_for_update`` links to: Actions artifacts require an
+authenticated API call and expire after 90 days, neither of which a shipped
+app can rely on without embedding a credential (bad idea for a public repo).
+``packaging/build.py``'s CI workflow instead publishes every push to `main`
+to a single rolling release tagged ``latest`` (see ``.github/workflows/
+build.yml``) - a public, permanent, unauthenticated download URL, matching
+this project's existing "every push is a build" continuous-deploy model
+rather than introducing real version tags.
+
+Self-update only applies to a genuinely frozen build (``sys.frozen``) - a
+source checkout has no single ``.exe`` to replace; use ``git pull`` instead,
+which is exactly why ``run-from-source.bat`` exists as the SmartScreen
+workaround it is (see ARCHITECTURE.md).
 """
 
 from __future__ import annotations
 
 import datetime as _dt
 import json
+import os
 import subprocess
 import sys
 import urllib.error
@@ -30,6 +50,7 @@ BRANCH = "main"
 API_ROOT = f"https://api.github.com/repos/{REPO}"
 ACTIONS_URL = f"https://github.com/{REPO}/actions?query=branch%3A{BRANCH}"
 COMPARE_URL = f"https://github.com/{REPO}/compare"
+RELEASE_TAG = "latest"
 _USER_AGENT = "BF6Tuner-update-check"
 
 
@@ -194,3 +215,130 @@ def check_for_update(timeout: float = 6.0) -> UpdateInfo:
         )
     except Exception as exc:
         return UpdateInfo(current_sha=current, status="error", error=_friendly_error(exc))
+
+
+# --------------------------------------------------------------------------
+# Self-update: download the latest release and swap the running exe for it.
+# See the module docstring for why this is a GitHub Release, not the Actions
+# artifact, and why it only applies to a frozen build.
+# --------------------------------------------------------------------------
+
+class SelfUpdateError(RuntimeError):
+    """Raised when the in-app self-update can't proceed. Always caught and
+    shown to the user - this is a button press, not a passive background
+    check, so unlike check_for_update() it is allowed to raise."""
+
+
+def _require_frozen() -> None:
+    if not getattr(sys, "frozen", False):
+        raise SelfUpdateError(
+            "Self-update only applies to the built .exe, not a source checkout - "
+            "use 'git pull' (or UPDATE.bat) instead."
+        )
+
+
+def find_asset_url(payload: dict[str, Any], asset_name: str) -> str | None:
+    """Pure lookup of one asset's download URL in a GitHub release API
+    payload. Kept separate from the network call so it is unit-testable with
+    a hand-built payload, same as parse_compare/parse_commit_list above."""
+    for asset in payload.get("assets") or []:
+        if asset.get("name") == asset_name:
+            url = asset.get("browser_download_url")
+            if url:
+                return url
+    return None
+
+
+def _latest_release_asset_url(asset_name: str, timeout: float) -> str:
+    """The download URL for `asset_name` (e.g. 'BF6Tuner.exe') attached to
+    the rolling 'latest' release. Raises SelfUpdateError with a clear reason
+    rather than letting a KeyError/network error surface raw."""
+    try:
+        payload = _get_json(f"{API_ROOT}/releases/tags/{RELEASE_TAG}", timeout)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            raise SelfUpdateError(
+                "No 'latest' release was found on GitHub yet - it may not have "
+                "published for the first time. Try the Actions artifact instead "
+                "(see 'Open GitHub Actions build')."
+            ) from exc
+        raise SelfUpdateError(_friendly_error(exc)) from exc
+    except Exception as exc:
+        raise SelfUpdateError(f"Could not reach GitHub: {exc}") from exc
+
+    url = find_asset_url(payload, asset_name)
+    if url is None:
+        raise SelfUpdateError(
+            f"The latest release has no '{asset_name}' asset. It may still be publishing - "
+            "try again in a minute, or download it manually from the Releases page."
+        )
+    return url
+
+
+def download_update(dest: Path, timeout: float = 60.0) -> Path:
+    """Download the current exe's counterpart from the 'latest' release to
+    `dest` (a temp path, not the running exe itself - see
+    apply_update_and_relaunch for why). Raises SelfUpdateError on anything
+    that isn't a clean success, including a sanity check on the downloaded
+    bytes: a Windows PE binary starts with 'MZ' and this app's exes are
+    always well over a megabyte, so a truncated download or an unexpected
+    HTML error page (e.g. a GitHub outage page) gets caught here rather than
+    silently "installed".
+    """
+    _require_frozen()
+    asset_name = Path(sys.executable).name
+    url = _latest_release_asset_url(asset_name, timeout)
+
+    request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+            data = response.read()
+    except Exception as exc:
+        raise SelfUpdateError(f"Download failed: {exc}") from exc
+
+    if len(data) < 1_000_000 or data[:2] != b"MZ":
+        raise SelfUpdateError(
+            "The downloaded file doesn't look like a valid Windows executable "
+            f"({len(data):,} bytes) - not installing it. Try again, or download "
+            "manually from the Releases page."
+        )
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(data)
+    return dest
+
+
+def apply_update_and_relaunch(new_exe: Path) -> None:
+    """Swap the running exe for `new_exe` and relaunch - then the caller
+    must exit immediately.
+
+    Windows will not let a running process delete or overwrite its own .exe
+    file, so this writes a tiny detached helper script that waits for this
+    process's PID to disappear, then does the move and relaunch, then
+    deletes itself. Best-effort by nature (a batch script polling
+    `tasklist`), same as every self-updater that has ever shipped on
+    Windows without a separate updater binary - there is no cleaner way to
+    replace a running exe with itself from inside itself.
+    """
+    _require_frozen()
+    current = Path(sys.executable)
+    script = current.with_suffix(".update.bat")
+    pid = os.getpid()
+    script.write_text(
+        "@echo off\r\n"
+        f":wait\r\n"
+        f'tasklist /fi "PID eq {pid}" 2>nul | find "{pid}" >nul\r\n'
+        f"if not errorlevel 1 (\r\n"
+        f"    timeout /t 1 /nobreak >nul\r\n"
+        f"    goto wait\r\n"
+        f")\r\n"
+        f'move /y "{new_exe}" "{current}" >nul\r\n'
+        f'start "" "{current}"\r\n'
+        f'del "%~f0"\r\n',
+        encoding="utf-8",
+    )
+    subprocess.Popen(
+        ["cmd", "/c", str(script)],
+        creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+        close_fds=True,
+    )

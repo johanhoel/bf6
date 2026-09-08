@@ -198,11 +198,16 @@ dependencies and takes a few minutes; after that it is about a minute.
 The app also checks for you: on launch, and on demand via **Check for updates** in
 the header, it asks GitHub's API whether `main` has moved on since the commit this
 build was made from, and — if so — shows the commit messages for everything you'd
-be getting, so it's an informed decision rather than a blind pull. There is no
-auto-download (no formal release artifact to fetch without a browser — see
-"Getting the executable" above), so the dialog links straight to
-the GitHub Actions run that has the built executables attached. Never blocks
+be getting, so it's an informed decision rather than a blind pull. Never blocks
 startup, and a failed or offline check just stays quiet.
+
+Two ways to actually get the update from that dialog:
+- **Download and install now** — downloads the new build from GitHub's rolling
+  `latest` release, replaces this exe, and relaunches automatically. Only shown
+  for the compiled `.exe` (a source checkout has nothing for this to replace —
+  use `git pull` / `UPDATE.bat` instead).
+- **Open GitHub Actions build →** — the original path, always available: opens
+  the Actions run that has the built executables attached, same as before.
 
 **Or build it yourself** on any Windows machine with Python 3.11+:
 
@@ -332,7 +337,7 @@ only thing that needs changing.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests -q          # 193 tests
+python -m pytest tests -q          # 201 tests
 PYTHONPATH=src python -m bf6tuner --preset competitive   # CLI, runs on Linux too
 ```
 
