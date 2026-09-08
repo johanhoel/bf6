@@ -208,8 +208,8 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle(f"{APP_NAME} {__version__} - Battlefield 6 configurator")
         self.setWindowIcon(app_icon())
-        self.resize(1320, 880)
         self.setMinimumSize(1080, 700)
+        self._size_to_screen()
 
         self._build_menu_bar()
 
@@ -233,6 +233,27 @@ class MainWindow(QMainWindow):
         self._loading = False
         self.redetect()
         self.check_for_updates(silent=True)
+
+    def _size_to_screen(self) -> None:
+        """Open at a size proportioned to the actual screen, not a fixed
+        1320x880 that looks tiny on a 4K/ultrawide display and cramped on a
+        laptop panel. Not fullscreen - a comfortable majority of the
+        available desktop (excluding the taskbar), capped so the layout
+        (designed around a ~390px fixed sidebar + a few hundred more of
+        content) doesn't stretch absurdly wide on a 5120px ultrawide, and
+        centered on screen.
+        """
+        screen = QApplication.primaryScreen()
+        available = screen.availableGeometry() if screen else None
+        if available is None:
+            self.resize(1320, 880)
+            return
+        width = min(max(int(available.width() * 0.8), 1080), 1600)
+        height = min(max(int(available.height() * 0.85), 700), 1000)
+        self.resize(width, height)
+        frame = self.frameGeometry()
+        frame.moveCenter(available.center())
+        self.move(frame.topLeft())
 
     # -- construction ------------------------------------------------------
 
@@ -2167,7 +2188,9 @@ class MainWindow(QMainWindow):
         # First-ever launch (no persisted target yet, see prefs.py): start
         # from whichever preset actually needs the fewest changes against
         # what's really saved right now, instead of a hardcoded default that
-        # may not match reality at all.
+        # may not match reality at all - then pull in every individual
+        # setting that still differs from that preset, so the app opens
+        # showing your actual configuration, not just the nearest preset.
         if not self._has_persisted_target:
             detected_preset = self._detect_closest_preset()
             if detected_preset is not None:
@@ -2175,6 +2198,7 @@ class MainWindow(QMainWindow):
                 if button is not None:
                     button.setChecked(True)
                     self.preset_blurb.setText(PRESET_BLURB[detected_preset])
+                self._seed_overrides_from_current()
 
         self._loading = False
 
@@ -2293,6 +2317,35 @@ class MainWindow(QMainWindow):
             self.game.profsave, self.game.user_cfg,
             overrides=self.setting_overrides, cfg_overrides=self.cfg_overrides,
         )
+
+    def _seed_overrides_from_current(self) -> None:
+        """First-ever launch only, right after `_detect_closest_preset` has
+        already picked and checked the closest preset's button: pull in
+        every individual setting that still differs from that preset in the
+        real current profile, so the app opens matching what is actually
+        configured rather than just the nearest built-in preset. The actual
+        diffing/filtering logic lives in `compare.seed_overrides_from_current`
+        (testable without Qt) - this just computes the one comparison it
+        needs and persists the result the same way any other override is
+        persisted.
+        """
+        try:
+            base_rec = recommend(
+                self.db, self.profile, self.current_target(),
+                overrides=self.setting_overrides, cfg_overrides=self.cfg_overrides,
+            )
+            comparison = compare.from_paths(
+                self.db, base_rec, self.game.profsave, self.game.user_cfg
+            )
+        except Exception:
+            return
+        if not comparison.available:
+            return
+        seed = compare.seed_overrides_from_current(comparison)
+        if not seed:
+            return
+        self.setting_overrides.update(seed)
+        prefs.save_setting_overrides(self.setting_overrides)
 
     def refresh(self) -> None:
         if self._loading:
