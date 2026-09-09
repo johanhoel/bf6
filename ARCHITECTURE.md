@@ -366,6 +366,55 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-09 (33) — First live self-update test: download worked, relaunch didn't
+
+User ran the actual "Download and install now" button (entry (26)) for the
+first time on a real machine. Result: the app closed and never came back -
+the first real end-to-end test of this feature, and it failed partway,
+confirmed by direct inspection rather than guessing from the symptom alone:
+
+- The downloaded exe was sitting complete and correct in
+  `%TEMP%\BF6Tuner-update\` (right size, matched the just-published release).
+  So `download_update()` worked correctly - not the bug.
+- The generated `<exe>.update.bat` helper script was still sitting next to
+  the old exe, **un-deleted** - meaning it never reached its own last line
+  (`del "%~f0"`), so it was killed or never ran, not "ran and failed
+  partway."
+
+Working diagnosis: `apply_update_and_relaunch` spawned the helper with
+`DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP`, but neither flag alone
+escapes a Windows **Job Object** with kill-on-close semantics - common for
+sandboxed/automated launch wrappers (this app was itself launched via a
+remote-control session's own process spawning for this test). If the
+parent is in such a job, "detached" children still die the instant the
+parent exits unless the child also has `CREATE_BREAKAWAY_FROM_JOB`. This
+matches the symptom exactly: the script never got far enough to even
+attempt its `move`, let alone reach `del`.
+
+Fixed, with a fallback: added `CREATE_BREAKAWAY_FROM_JOB` to the creation
+flags, wrapped in try/except - some job objects explicitly disallow
+breakaway, in which case `Popen` raises rather than silently ignoring the
+flag, so falls back to the plain flags rather than crash the whole update
+attempt. Also hardened the move step itself while already in there: retries
+up to 10 times with a 1s wait between, since the PyInstaller bootloader's
+*parent* process (distinct from the PID actually waited on, which is the
+unpacked child) could plausibly still hold the exe's file handle a moment
+after the waited-on PID exits - not confirmed as a second real bug, but
+cheap to guard against given the first assumption ("one wait is enough")
+already failed once.
+
+**Recovery, not just a fix**: manually completed the interrupted update
+by hand (deleted the stale `.update.bat`, moved the already-downloaded exe
+into `dist/` directly) rather than making the user re-download - the
+download itself was never the problem.
+
+**Not yet re-verified live** - this is a real bug found and fixed from
+direct evidence, but the fix itself (`CREATE_BREAKAWAY_FROM_JOB`) has not
+yet been tested end-to-end on a real run. Next session/next test: leave a
+build "behind" again (same technique as the first test - don't refresh
+`dist/` immediately after publishing) and have the user click "Download
+and install now" again to confirm the actual relaunch now completes.
+
 ### 2026-09-09 (32) — Fixed a real bug entry (31) itself introduced: hardcoded tab indices
 
 User screenshot showed the new Key Bindings tab correctly populated with
