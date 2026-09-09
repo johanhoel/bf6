@@ -36,7 +36,6 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
-import os
 import subprocess
 import sys
 import urllib.error
@@ -313,12 +312,24 @@ def apply_update_and_relaunch(new_exe: Path) -> None:
     must exit immediately.
 
     Windows will not let a running process delete or overwrite its own .exe
-    file, so this writes a tiny detached helper script that waits for this
-    process's PID to disappear, then does the move and relaunch, then
-    deletes itself. Best-effort by nature, same as every self-updater that
-    has ever shipped on Windows without a separate updater binary - there
-    is no cleaner way to replace a running exe with itself from inside
-    itself.
+    file, so this writes a tiny detached helper script that waits for every
+    process running this exe to disappear, then does the move and
+    relaunch, then deletes itself. Best-effort by nature, same as every
+    self-updater that has ever shipped on Windows without a separate
+    updater binary - there is no cleaner way to replace a running exe with
+    itself from inside itself.
+
+    Waits on *every process running this exe's path*, not just this
+    process's own PID: a PyInstaller onefile build is actually two
+    processes (an outer bootloader stub and an inner re-exec'd child doing
+    the real work - `os.getpid()` from inside Python only ever sees the
+    child). PyInstaller 6.22.1+ added a security check where the child
+    verifies its parent's exe path matches its own, to block PID-reuse
+    spoofing attacks - hit for real here: waiting only for the child PID
+    let the relaunch race the bootloader parent's own exit, and the new
+    instance's validation failed with "parent process has different
+    executable" once the file had already been replaced out from under a
+    parent that hadn't quite finished exiting yet.
 
     This is a PowerShell script, not a batch file - not a style choice, a
     bug fix. A batch-file version of this (see git history) was verified
@@ -337,9 +348,17 @@ def apply_update_and_relaunch(new_exe: Path) -> None:
     _require_frozen()
     current = Path(sys.executable)
     script = current.with_suffix(".update.ps1")
-    pid = os.getpid()
     script.write_text(
-        f"while (Get-Process -Id {pid} -ErrorAction SilentlyContinue) {{ Start-Sleep -Seconds 1 }}\n"
+        # Compare by the process's own resolved image path (Get-Process's
+        # .Path), not by name - catches both the bootloader parent and the
+        # child regardless of which PID either one has, unlike waiting on
+        # a single specific PID (see docstring for why that was the bug).
+        f"while (Get-Process | Where-Object {{ $_.Path -eq '{current}' }}) {{ Start-Sleep -Milliseconds 500 }}\n"
+        # A small extra buffer past "the process list looks empty" - even
+        # after every process is gone, Windows can take a moment to fully
+        # release the exe's image/handle; the same margin-on-the-tight-
+        # side lesson as every other guess in this function so far.
+        f"Start-Sleep -Seconds 1\n"
         f"for ($i = 0; $i -lt 10; $i++) {{\n"
         f"    try {{\n"
         f"        Move-Item -LiteralPath '{new_exe}' -Destination '{current}' -Force -ErrorAction Stop\n"
