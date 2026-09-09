@@ -366,6 +366,36 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-09 (38) — The pattern from entries (34)/(36) recurred a third time
+
+Retested entry (37)'s PowerShell rewrite; the leftover file was
+`BF6Tuner.update.bat`, not `.update.ps1` - direct proof the process that
+attempted the update was still running **pre-(37)** code (a `.bat` is only
+ever written by the old batch-based code path). The build being tested
+from was, again, not actually running the fix under test - the exact
+mistake named twice already, now a third time.
+
+**Process change, not just another retry**: before asking for another live
+test of a self-update fix, verify - don't assume - that the running PID
+was actually launched *after* the fix's build, by checking its start time
+against the fix commit's build timestamp directly, the same way the
+release publish time is already checked. Recovered by hand again (routine
+by now), deployed the actual (37) build directly (not via self-update -
+manually, same as every recovery so far), and relaunched it. This entry is
+the next "something newer" - the process now running genuinely has the
+(37) fix, confirmed by its start time being *after* this session's
+`dist/BF6Tuner.exe` was overwritten with the (37) build, not before.
+
+Separately, entry (37)'s own isolated verification (calling
+`apply_update_and_relaunch` directly with `sys.frozen` monkeypatched, the
+exact flags the real code path uses) succeeded automatically twice in
+that same session, with zero manual intervention either time - that result
+stands regardless of how this live test goes, and is real signal the fix
+itself is sound. What's still unconfirmed is the one difference that
+isolated test can't reach: a genuinely console-less, windows-subsystem
+frozen exe as the actual spawning parent, rather than a console-based
+Python process standing in for it.
+
 ### 2026-09-09 (37) — Switched the self-update helper from batch to PowerShell
 
 Entry (35)'s `goto`-in-parens fix was retested correctly this time (an
