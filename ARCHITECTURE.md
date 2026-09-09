@@ -366,6 +366,26 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-09 (36) — Repeated entry (34)'s exact testing mistake, once, then caught it
+
+Tested entry (35)'s actual fix (the `goto`-in-parens rewrite) by relaunching
+the *pre-(35)* build as "something behind to update from" - the identical
+methodological error entry (34) already documented and named. Result: same
+old-shaped script, same failure - not because the fix is wrong, but
+because the process doing the updating was never running the fixed code.
+Confirmed directly (same as before): the leftover `.update.bat` was the
+old, pre-(35) shape.
+
+No code change. Recovered the interrupted update by hand again (by now a
+well-drilled routine: delete the stale `.bat`, move the already-downloaded
+exe into `dist/` directly), deployed and launched the *actual* (35)-fixed
+build this time, and this doc entry is - again - the "something newer" a
+correctly-fixed running process needs in order to test updating to it.
+**Lesson restated because it clearly needed restating**: before retesting
+any self-update fix, check *which build is currently running*, not just
+whether a newer release exists - "leave a build behind" only tests
+anything if the one left running already has the fix under test.
+
 ### 2026-09-09 (35) — Actual root cause found: `goto` inside a parenthesized `if`, not job objects
 
 Entry (33)'s fix (`CREATE_BREAKAWAY_FROM_JOB`) was retested properly this
