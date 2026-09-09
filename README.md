@@ -65,6 +65,12 @@ Both tables group their rows by category (Video &gt; Basic/Advanced/Ray Tracing,
 Controls, Audio for settings; CPU Threading, Render Pipeline, Frame Pacing and so
 on for `User.cfg`), with a search box, a jump-to-category dropdown, and
 expand/collapse-all — the settings list alone is 46 rows and only getting longer.
+The in-game settings table also has an **Impact column**: each row is tagged
+with which hardware resource(s) it meaningfully costs — GPU (teal), CPU (pink),
+VRAM (purple) — colour-matched to a legend above the table, so scanning down
+the column shows at a glance which settings are worth lowering first on a
+CPU-limited machine versus a GPU-limited one (the same colours and cost labels
+reappear when you click a row for the full detail pane).
 
 **Compares** — reads your *current* settings out of `PROFSAVE_profile` and your
 existing `User.cfg`, then shows every single change side by side with what it

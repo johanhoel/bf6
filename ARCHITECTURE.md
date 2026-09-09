@@ -366,6 +366,50 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-09 (45) — Colour-coded Impact column on the in-game settings table
+
+User asked two things after entry (44): where the new CPU-saving settings
+actually are in the UI, and whether each setting's GPU/CPU/VRAM cost could be
+colour-coded so it's visible at a glance instead of only in the detail pane
+on click.
+
+- New `Impact` column on the in-game settings table (between Value and
+  Reset), one small coloured tag per resource a setting meaningfully costs -
+  GPU teal, CPU pink/magenta, VRAM purple (`theme.RESOURCE_COLOUR`),
+  deliberately distinct hues from the existing OK/WARN/BAD/ACCENT/INFO
+  palette, which already carry a "good/caution/bad" meaning elsewhere and
+  would have been confusing reused here for "which resource," not "how
+  bad."
+- The threshold for what counts as "meaningful" (gpu/cpu >= 1, vram >= 2)
+  and the cost-label wording ("low"/"medium"/"high"/"very high") already
+  existed inline inside `_update_setting_detail` (the click-through detail
+  pane); pulled both out into shared module-level helpers
+  (`_impact_breakdown`, `_cost_label`) so the table's badges and the detail
+  pane can never quietly disagree about what "CPU: high" means.
+- A small legend ("Impact: GPU CPU VRAM", colour-matched) sits above the
+  table so the colours are self-explanatory without a hover.
+- This only touches the **in-game settings table** (`ingame_settings.json`
+  has a clean numeric `impact: {gpu, cpu, vram}` on every entry). The
+  `User.cfg` commands table was deliberately left alone -
+  `cfg_commands.json` only has a `group` field (`cpu_threading`,
+  `render_pipeline`, etc.), not a numeric cost breakdown, and forcing it
+  into the same three-colour scheme would have meant guessing magnitudes
+  that aren't in the data. Left for a future round if the user wants it.
+- Adding a table column shifted `Reset` from column 2 to 3 and `Why` from 3
+  to 4 in `settings_table` only (`cfg_table` is unchanged, still 4
+  columns) - every hardcoded column-index reference in that one table's
+  build/sync code was updated together, the same mistake class as entry
+  (32)'s tab-index bug.
+- Not unit-tested directly - pure Qt-widget-layer glue (`MainWindow` can't
+  be constructed offscreen at all, entry (22)). Verified instead the way
+  entry (29) did: `python -m py_compile`, then imported the module under
+  `QT_QPA_PLATFORM=offscreen` and called the new helpers directly against
+  every real setting in the database (30 of 46 settings produce a badge;
+  spot-checked `mesh_quality`, `significance_quality`, `undergrowth_quality`
+  by hand). All 226 tests still pass (nothing new to add at the pure-logic
+  layer, since the new code has none beyond the shared helpers already
+  exercised this way).
+
 ### 2026-09-09 (44) — CPU-saving settings for low-spec hardware: Significance Quality, Undergrowth Quality, and the frame-rate-limiter family
 
 User asked to dig into `User.cfg`/in-game CPU-saving coverage specifically
