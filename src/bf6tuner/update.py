@@ -332,13 +332,40 @@ def apply_update_and_relaunch(new_exe: Path) -> None:
         f"    timeout /t 1 /nobreak >nul\r\n"
         f"    goto wait\r\n"
         f")\r\n"
-        f'move /y "{new_exe}" "{current}" >nul\r\n'
+        # The PyInstaller bootloader's own parent process can briefly hold
+        # the exe file handle a moment after the PID we waited for (the
+        # unpacked child, not the bootloader itself) has already exited -
+        # retry the move a few times rather than fail on the first
+        # "file in use" instead of guessing a single fixed delay is enough.
+        f":move\r\n"
+        f'move /y "{new_exe}" "{current}" >nul 2>nul\r\n'
+        f"if errorlevel 1 (\r\n"
+        f"    set /a movetries+=1\r\n"
+        f"    if %movetries% lss 10 (\r\n"
+        f"        timeout /t 1 /nobreak >nul\r\n"
+        f"        goto move\r\n"
+        f"    )\r\n"
+        f")\r\n"
         f'start "" "{current}"\r\n'
         f'del "%~f0"\r\n',
         encoding="utf-8",
     )
-    subprocess.Popen(
-        ["cmd", "/c", str(script)],
-        creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
-        close_fds=True,
-    )
+    # DETACHED_PROCESS alone does not escape a Windows Job Object with
+    # kill-on-close semantics, which this process may well be running
+    # inside (common for sandboxed/automated launch wrappers) - without
+    # CREATE_BREAKAWAY_FROM_JOB, the helper script gets silently killed the
+    # instant this process exits, before it ever gets to move/relaunch
+    # anything. Confirmed happening for real, not theoretical: the first
+    # live test left a fully-downloaded new exe in place and an
+    # un-deleted, never-run .update.bat behind. Some job objects disallow
+    # breakaway entirely (Popen raises rather than ignoring the flag), so
+    # fall back to the plain flags rather than fail the whole update.
+    base_flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+    try:
+        subprocess.Popen(
+            ["cmd", "/c", str(script)],
+            creationflags=base_flags | subprocess.CREATE_BREAKAWAY_FROM_JOB,
+            close_fds=True,
+        )
+    except OSError:
+        subprocess.Popen(["cmd", "/c", str(script)], creationflags=base_flags, close_fds=True)
