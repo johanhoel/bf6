@@ -366,6 +366,42 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-09 (42) — Self-update saga closes: the last blocker isn't a code bug
+
+A retest of entry (41)'s fix hit a new failure: Smart App Control blocked
+the relaunch outright. Confirmed via the actual event log (same technique
+as entry (17)'s original SmartScreen investigation), not assumed:
+`Microsoft-Windows-CodeIntegrity/Operational` event 3118/3077 at the exact
+moment of the test, "Code Integrity determined that a process
+(`explorer.exe`) attempted to load `BF6Tuner.exe` that did not meet the
+Enterprise signing level requirements."
+
+Notable detail: the *loading process* the log names is `explorer.exe`, not
+`powershell.exe` - because PowerShell's `Start-Process` cmdlet goes through
+Windows' ShellExecute/shell integration under the hood (the same code path
+as double-clicking the file in Explorer), not a direct process launch. This
+matters for what can and can't be fixed here: Smart App Control's block
+happens at the kernel's own image-loading layer (Code Integrity), not at
+whichever API asked for the process to start - a direct `CreateProcess`-
+style launch would hit the identical block, since what's being rejected is
+the fresh, unsigned, never-before-seen file hash itself, independent of how
+it's invoked. There is no code change available here that routes around
+it.
+
+**Conclusion**: all four self-update bugs found this session (job-object
+theory, `goto`-in-parens, `DETACHED_PROCESS` console dependency, two
+PyInstaller-onefile parent-check variants) are genuinely fixed - download,
+swap, and relaunch all completed correctly in the run that succeeded
+(entry (39)). What blocked *this* run is the same systemic problem the
+project has had since entry (17): an unsigned, fresh-hash build with no
+accumulated reputation, which self-update cannot bypass any more than a
+manual double-click can. This is not a bug to keep chasing with more code
+- only a code-signing certificate (flagged, never scoped, since the very
+first session touching this app) durably fixes it. Presented this to the
+user directly rather than attempting another workaround; their call
+whether to scope a cert now or keep using `run-from-source.bat`/manual
+"Run anyway" as the accepted workaround.
+
 ### 2026-09-09 (41) — Fourth self-update bug: launcher exited before the new process finished its own check
 
 Entry (40)'s fix for the "different executable" variant surfaced a
