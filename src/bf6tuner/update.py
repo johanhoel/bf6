@@ -315,60 +315,55 @@ def apply_update_and_relaunch(new_exe: Path) -> None:
     Windows will not let a running process delete or overwrite its own .exe
     file, so this writes a tiny detached helper script that waits for this
     process's PID to disappear, then does the move and relaunch, then
-    deletes itself. Best-effort by nature (a batch script polling
-    `tasklist`), same as every self-updater that has ever shipped on
-    Windows without a separate updater binary - there is no cleaner way to
-    replace a running exe with itself from inside itself.
+    deletes itself. Best-effort by nature, same as every self-updater that
+    has ever shipped on Windows without a separate updater binary - there
+    is no cleaner way to replace a running exe with itself from inside
+    itself.
+
+    This is a PowerShell script, not a batch file - not a style choice, a
+    bug fix. A batch-file version of this (see git history) was verified
+    correct twice by hand - running the exact generated `.bat` directly
+    from an interactive shell worked perfectly every time - yet it still
+    hung/failed every time it was actually spawned by the running app.
+    The difference: `DETACHED_PROCESS` gives the spawned process *no
+    console at all*, and legacy console utilities this script depended on
+    (`timeout`, and the `tasklist | find` pipe) can misbehave or hang
+    without one - invisible when you run the script yourself from a real
+    console, real when the app spawns it headless. PowerShell's own
+    cmdlets (`Get-Process`, `Start-Sleep`, `Move-Item`, `Start-Process`)
+    are .NET calls, not external console programs, so they carry no such
+    dependency.
     """
     _require_frozen()
     current = Path(sys.executable)
-    script = current.with_suffix(".update.bat")
+    script = current.with_suffix(".update.ps1")
     pid = os.getpid()
-    # Every `goto` here is a bare top-level statement, never inside a
-    # parenthesized `if (...)`/`for (...)` block. That's deliberate, not
-    # style: `goto` jumping out of a parenthesized compound statement is a
-    # well-known cmd.exe pitfall - the parser pre-reads the whole `( ... )`
-    # block before executing it, and a `goto` escaping mid-block leaves its
-    # paren-matching state corrupted, especially once the same block gets
-    # re-entered through a loop. Confirmed as the actual, sole cause of two
-    # live test failures that both looked identical to "the process got
-    # killed before it could run": running the exact script by hand gave a
-    # verbatim `cmd.exe` parse error ("10 was unexpected at this time"),
-    # not a silent kill. An earlier fix attempt (CREATE_BREAKAWAY_FROM_JOB,
-    # kept below as a harmless defensive addition) was aimed at a real but
-    # wrong theory and made no difference - this is the actual fix.
     script.write_text(
-        "@echo off\r\n"
-        "set movetries=0\r\n"
-        ":wait\r\n"
-        f'tasklist /fi "PID eq {pid}" 2>nul | find "{pid}" >nul\r\n'
-        "if errorlevel 1 goto move\r\n"
-        "timeout /t 1 /nobreak >nul\r\n"
-        "goto wait\r\n"
-        ":move\r\n"
-        f'move /y "{new_exe}" "{current}" >nul 2>nul\r\n'
-        "if not errorlevel 1 goto launch\r\n"
-        "set /a movetries+=1\r\n"
-        "if %movetries% geq 10 goto launch\r\n"
-        "timeout /t 1 /nobreak >nul\r\n"
-        "goto move\r\n"
-        ":launch\r\n"
-        f'start "" "{current}"\r\n'
-        'del "%~f0"\r\n',
+        f"while (Get-Process -Id {pid} -ErrorAction SilentlyContinue) {{ Start-Sleep -Seconds 1 }}\n"
+        f"for ($i = 0; $i -lt 10; $i++) {{\n"
+        f"    try {{\n"
+        f"        Move-Item -LiteralPath '{new_exe}' -Destination '{current}' -Force -ErrorAction Stop\n"
+        f"        break\n"
+        f"    }} catch {{\n"
+        f"        Start-Sleep -Seconds 1\n"
+        f"    }}\n"
+        f"}}\n"
+        f"Start-Process -FilePath '{current}'\n"
+        f"Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force\n",
         encoding="utf-8",
     )
-    # CREATE_BREAKAWAY_FROM_JOB: not confirmed to matter (see above - the
-    # real bug was the batch syntax), but harmless to keep as a defensive
-    # extra in case some environment really does run this inside a
-    # kill-on-close Job Object. Some job objects disallow breakaway outright
-    # (Popen raises rather than ignoring the flag), so fall back to the
-    # plain flags rather than fail the whole update over this extra.
-    base_flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+    # CREATE_NO_WINDOW (not DETACHED_PROCESS - see docstring) still gives
+    # PowerShell a real, working console under the hood, just an invisible
+    # one - the console-dependency failure mode this replaces doesn't apply
+    # here regardless, since nothing in the script calls out to an external
+    # console utility, but there is no reason to also fight that battle a
+    # second time by reusing the flag that caused it.
+    base_flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+    args = [
+        "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-WindowStyle", "Hidden", "-File", str(script),
+    ]
     try:
-        subprocess.Popen(
-            ["cmd", "/c", str(script)],
-            creationflags=base_flags | subprocess.CREATE_BREAKAWAY_FROM_JOB,
-            close_fds=True,
-        )
+        subprocess.Popen(args, creationflags=base_flags | subprocess.CREATE_BREAKAWAY_FROM_JOB, close_fds=True)
     except OSError:
-        subprocess.Popen(["cmd", "/c", str(script)], creationflags=base_flags, close_fds=True)
+        subprocess.Popen(args, creationflags=base_flags, close_fds=True)
