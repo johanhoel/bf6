@@ -366,6 +366,50 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-09 (37) — Switched the self-update helper from batch to PowerShell
+
+Entry (35)'s `goto`-in-parens fix was retested correctly this time (an
+actually-fixed running process, updating to a genuinely newer release) -
+and the leftover `.update.bat` confirmed the fixed script format was really
+being generated. **Still failed anyway**: script never reached its own
+`del`, exe never got swapped. This time the isolating test was to run the
+exact leftover script by hand, the same technique that found entry (35)'s
+bug - and this time it ran **perfectly** by hand: exe swapped, app
+relaunched, script self-deleted, no error at all.
+
+That result is the actual diagnostic: **the script is correct; the bug is
+in how the app spawns it, not what it says.** The one meaningful
+difference between "run by hand from an interactive shell" and "spawned by
+the frozen GUI app" is `DETACHED_PROCESS`, which gives the child *no
+console at all*. The old script depended on two external console
+utilities for its core logic - `timeout` (needs a real console to avoid
+"Input redirection is not supported, exiting the process immediately") and
+a `tasklist | find` pipe (piping has its own console-handle assumptions).
+Both work fine when a console already exists (running it by hand); both
+can silently misbehave with none at all (`DETACHED_PROCESS` from a
+windows-subsystem app).
+
+Fixed by rewriting the whole helper as a **PowerShell script**, not a
+batch file, and switching to `CREATE_NO_WINDOW` (allocates a real, working,
+just-invisible console) instead of `DETACHED_PROCESS`. `Get-Process`,
+`Start-Sleep`, `Move-Item`, `Start-Process` are .NET calls internal to
+PowerShell, not external console programs piped together, so the specific
+failure mode above doesn't apply to any of them regardless of which flag
+is used - this isn't "hope a different flag helps," it's "remove the
+dependency on the thing that flag was breaking."
+
+Verified end to end with the exact call the app makes
+(`update.apply_update_and_relaunch`, `sys.frozen` monkeypatched, real
+`Popen` with the real flags, fake exe files) - the swap and relaunch now
+complete **automatically**, with zero manual intervention, unlike every
+previous attempt at this specific verification. That's the strongest
+signal yet that this is actually fixed, though it still hasn't been
+confirmed against a real frozen build being spawned by a real windows-
+subsystem parent (the one difference this test still can't fully
+replicate) - next live test is the real confirmation.
+
+All 211 tests pass. Followed the standing build/release workflow.
+
 ### 2026-09-09 (36) — Repeated entry (34)'s exact testing mistake, once, then caught it
 
 Tested entry (35)'s actual fix (the `goto`-in-parens rewrite) by relaunching
