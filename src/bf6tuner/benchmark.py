@@ -57,27 +57,41 @@ _ERROR_ELEVATION_REQUIRED = 740
 # {process}/{pid}, {output}, {duration} are substituted by build_args().
 # Editable from the UI's Advanced field if a given PresentMon build wants
 # different flags - not hardcoded past this one place. Flags verified
-# against github.com/GameTechDev/PresentMon's README-ConsoleApplication.md
-# for the 2.x console application: --process_name/--process_id,
-# --output_file and --timed are the documented capture/duration flags;
-# --stop_existing_session clears a stale trace under the same name rather
-# than erroring; --no_console_stats suppresses the live per-frame console
-# output, which this app doesn't read anyway since it captures via
-# subprocess.run().
+# against `PresentMon-2.5.1-x64.exe --help`'s actual current output (not
+# just README-ConsoleApplication.md, which drifts): --process_name/
+# --process_id, --output_file and --timed are the documented capture/
+# duration flags; --stop_existing_session clears a stale trace under the
+# same name rather than erroring; --no_console_stats suppresses the live
+# per-frame console output, which this app doesn't read anyway since it
+# captures via subprocess.run().
+#
+# --terminate_after_timed (2026-09-09): confirmed live, reproducibly, that
+# --timed alone only stops *recording* - the process itself keeps running
+# afterwards (waiting on a hotkey that was never configured here), so
+# `run_capture`'s subprocess.run() would sit until its own timeout fired.
+# Without this flag every capture eventually looked like a hang/timeout
+# regardless of anything else being right, and killing the stuck process by
+# hand leaves its ETW trace session dangling for the *next* attempt to trip
+# over ("a trace session named 'PresentMon' is already running" - also
+# reproduced live). This flag makes PresentMon exit cleanly on its own the
+# moment the timed capture finishes, which is what --stop_existing_session
+# was already assuming would happen for the *next* run.
 #
 # PID targeting is preferred when a PID is known (see run_capture's `pid`
 # param): PresentMon's own runtime warning says resolving a process by
 # *name* needs elevation for short-lived processes or ones started under
-# another account, which a known PID sidesteps - confirmed necessary in
-# practice (2026-09-07): --process_name still demanded elevation even from
-# the standalone console tool run under an already-elevated parent process.
+# another account, which a known PID sidesteps - a real BF6 process is
+# neither of those, so this may turn out to have been a red herring that
+# --terminate_after_timed's absence made look like an elevation problem;
+# kept as a fallback rather than removed, since it was added in response to
+# a real observed error and hasn't been *disproven*, only made less certain.
 DEFAULT_ARGS_TEMPLATE = (
     "--process_name {process} --output_file {output} --timed {duration} "
-    "--stop_existing_session --no_console_stats"
+    "--terminate_after_timed --stop_existing_session --no_console_stats"
 )
 DEFAULT_PID_ARGS_TEMPLATE = (
     "--process_id {pid} --output_file {output} --timed {duration} "
-    "--stop_existing_session --no_console_stats"
+    "--terminate_after_timed --stop_existing_session --no_console_stats"
 )
 
 

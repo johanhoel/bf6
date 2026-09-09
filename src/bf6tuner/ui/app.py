@@ -7,6 +7,7 @@ written to disk until an explicit button press.
 
 from __future__ import annotations
 
+import json
 import sys
 import traceback
 from datetime import datetime
@@ -57,6 +58,11 @@ PRESET_BLURB = {
     "balanced": "Match your monitor",
     "quality": "Best image at 60+",
 }
+# Bumped only if the exported file's shape ever needs to change in a way
+# that breaks reading an older export - import_profile() doesn't currently
+# check this beyond "is it present," but it's there so a future version can.
+PROFILE_EXPORT_VERSION = 1
+
 CFG_GROUP_TITLES = {
     "cpu_threading": "CPU Threading",
     "render_pipeline": "Render Pipeline",
@@ -65,6 +71,20 @@ CFG_GROUP_TITLES = {
     "world_render": "World Render",
     "overlay": "Overlay",
     "misc": "Misc",
+}
+
+# Unlike ingame_settings.json's per-option gpu/cpu/vram cost curve, cfg_commands.json
+# only has a group label, not a magnitude - so this maps to a *category* tag (which
+# subsystem the command touches), not a cost claim the way the settings table's
+# Impact column is. Only the two groups with an unambiguous resource are tagged;
+# frame_pacing/overlay/misc get no colour rather than a guessed one, since VSync,
+# the FPS overlay and a documented-never-emitted visibility toggle don't have a
+# clean single resource they cost.
+CFG_GROUP_RESOURCE = {
+    "cpu_threading": "cpu",
+    "render_pipeline": "gpu",
+    "post_process": "gpu",
+    "world_render": "gpu",
 }
 
 
@@ -303,6 +323,8 @@ class MainWindow(QMainWindow):
 
         file_menu = menubar.addMenu("&File")
         self._add_action(file_menu, "Save &profile as...", "Ctrl+Shift+S", self.save_profile_as)
+        self._add_action(file_menu, "Export profile...", None, self.export_selected_profile)
+        self._add_action(file_menu, "Import profile...", None, self.import_profile)
         file_menu.addSeparator()
         self._add_action(file_menu, "&Locate files...", "Ctrl+L", self.locate_files)
         self._add_action(file_menu, "Bac&k up now", "Ctrl+B", self.backup_now)
@@ -458,10 +480,29 @@ class MainWindow(QMainWindow):
         row.addWidget(self.delete_profile_button)
         profiles_layout.addLayout(row)
 
+        share_row = QHBoxLayout()
+        share_row.setSpacing(6)
+        self.export_profile_button = QPushButton("Export...")
+        self.export_profile_button.setEnabled(False)
+        self.export_profile_button.setToolTip(
+            "Save the selected profile as a .json file you can send to someone else."
+        )
+        self.export_profile_button.clicked.connect(self.export_selected_profile)
+        share_row.addWidget(self.export_profile_button)
+
+        import_button = QPushButton("Import...")
+        import_button.setToolTip(
+            "Load a profile .json someone sent you into your own profile list. "
+            "Only adds it - you still press Load to actually apply it."
+        )
+        import_button.clicked.connect(self.import_profile)
+        share_row.addWidget(import_button)
+        profiles_layout.addLayout(share_row)
+
         profiles_layout.addWidget(dim(
             "Bundles the preset, target and every override into one saved, "
             "switchable slot - beyond the 4 built-in presets. Pick one and "
-            "press Load."
+            "press Load. Export/Import share a profile as a single file."
         ))
 
         self._reload_profile_combo()
@@ -493,6 +534,7 @@ class MainWindow(QMainWindow):
         self.load_profile_button.setEnabled(has_selection)
         self.update_profile_button.setEnabled(has_selection)
         self.delete_profile_button.setEnabled(has_selection)
+        self.export_profile_button.setEnabled(has_selection)
 
     def _collect_profile_data(self) -> dict:
         label = self.resolution_box.currentText()
@@ -601,6 +643,78 @@ class MainWindow(QMainWindow):
         if button is not None:
             button.setChecked(True)
         self.statusBar().showMessage(f'Deleted profile "{name}".')
+
+    def export_selected_profile(self) -> None:
+        """Write the selected profile to a standalone .json file - the whole
+        point being someone else can Import it into their own copy of this
+        app, so a configuration can be handed over directly instead of
+        described. Exports whatever is saved under that name already (same
+        "acts on the combo's current selection" rule as Load/Update/Delete),
+        not the live sidebar state - Update it first if they've drifted."""
+        name = self._selected_profile_name()
+        data = prefs.load_profiles().get(name) if name else None
+        if name is None or data is None:
+            return
+        safe_name = "".join(c if c.isalnum() or c in " -_" else "_" for c in name).strip() or "profile"
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export profile", f"{safe_name}.json", "BF6 Tuner profile (*.json)",
+        )
+        if not path:
+            return
+        payload = {"bf6tuner_profile": PROFILE_EXPORT_VERSION, "name": name, "data": data}
+        try:
+            Path(path).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        except OSError as exc:
+            QMessageBox.warning(self, "Export failed", f"Could not write {path}:\n{exc}")
+            return
+        self.statusBar().showMessage(f'Exported profile "{name}" to {path}.')
+
+    def import_profile(self) -> None:
+        """The reverse of Export - reads the file, adds it to this app's own
+        profile list under a name you confirm, and stops there. Deliberately
+        does not apply it: the live sidebar state is not what's in the file,
+        and silently overwriting it on import would be exactly the kind of
+        unrequested change this app never makes elsewhere (see Load's own
+        "explicit button, never auto-apply" reasoning above) - press Load
+        afterwards, same as any other saved profile."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import profile", "", "BF6 Tuner profile (*.json);;All files (*)",
+        )
+        if not path:
+            return
+        try:
+            payload = json.loads(Path(path).read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "Import failed", f"Could not read {path}:\n{exc}")
+            return
+        if not isinstance(payload, dict) or not isinstance(payload.get("data"), dict):
+            QMessageBox.warning(
+                self, "Import failed",
+                f"{path} does not look like a profile exported from this app "
+                "(missing or malformed 'data').",
+            )
+            return
+        data = payload["data"]
+        default_name = str(payload.get("name") or Path(path).stem)
+
+        from PySide6.QtWidgets import QInputDialog
+        name, ok = QInputDialog.getText(
+            self, "Import profile", "Save the imported profile as:", text=default_name,
+        )
+        name = name.strip()
+        if not ok or not name:
+            return
+        if name in prefs.load_profiles():
+            confirm = QMessageBox.question(
+                self, "Overwrite profile",
+                f'A profile named "{name}" already exists. Overwrite it?',
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+            )
+            if confirm != QMessageBox.Yes:
+                return
+        prefs.save_profile(name, data)
+        self._reload_profile_combo(select=name)
+        self.statusBar().showMessage(f'Imported profile "{name}". Press Load to apply it.')
 
     def _build_sidebar(self) -> QWidget:
         panel = QWidget()
@@ -765,7 +879,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self._settings_tab_widget, "In-game settings")
 
         self.cfg_table = self._make_table(
-            ["Command", "Value", "", "Why"], [260, 160, 155, -1]
+            ["Command", "Value", "Category", "", "Why"], [260, 160, 90, 155, -1]
         )
         self._cfg_tab_widget = self._build_cfg_tab()
         self.tabs.addTab(self._cfg_tab_widget, "User.cfg")
@@ -1146,6 +1260,20 @@ class MainWindow(QMainWindow):
         )
         self.cfg_override_note = dim(self._cfg_note_default)
         row.addWidget(self.cfg_override_note, 1)
+
+        cfg_category_legend = QLabel(
+            "Category:&nbsp;"
+            f"<span style='color:{theme.GPU_COLOUR}; font-weight:600'>GPU</span>&nbsp;&nbsp;"
+            f"<span style='color:{theme.CPU_COLOUR}; font-weight:600'>CPU</span>"
+        )
+        cfg_category_legend.setObjectName("Dim")
+        cfg_category_legend.setToolTip(
+            "Unlike the in-game settings tab, this is a subsystem label, not a cost curve - "
+            "cfg_commands.json has no per-option GPU/CPU/VRAM magnitude to draw one from. "
+            "Only categories with one unambiguous resource are tagged; Frame Pacing/Overlay/"
+            "Misc commands get no tag rather than a guessed one."
+        )
+        row.addWidget(cfg_category_legend)
 
         self.reset_cfg_overrides_button = QPushButton("Reset all to recommended")
         self.reset_cfg_overrides_button.clicked.connect(self.reset_all_cfg_overrides)
@@ -1649,7 +1777,7 @@ class MainWindow(QMainWindow):
 
             for row, (kind, key) in enumerate(row_kind):
                 if kind == "header":
-                    self._make_header_row(table, row, span=4)
+                    self._make_header_row(table, row, span=5)
                     continue
 
                 line = lines_by_key[key]
@@ -1665,6 +1793,12 @@ class MainWindow(QMainWindow):
                 else:
                     table.setItem(row, 1, QTableWidgetItem(""))
 
+                category_label = QLabel(self._cfg_category_badge_html(command))
+                category_label.setTextFormat(Qt.RichText)
+                category_label.setToolTip(self._cfg_category_tooltip(command))
+                category_label.setAlignment(Qt.AlignCenter)
+                table.setCellWidget(row, 2, category_label)
+
                 if line.key in LINKED_CFG_KEYS:
                     linked = QPushButton("Frame limit ->")
                     linked.setObjectName("TableButton")
@@ -1674,7 +1808,7 @@ class MainWindow(QMainWindow):
                         "never disagree about the cap."
                     )
                     linked.clicked.connect(self._goto_frame_limit)
-                    table.setCellWidget(row, 2, linked)
+                    table.setCellWidget(row, 3, linked)
                 elif editor is not None:
                     reset = QPushButton("Reset")
                     reset.setObjectName("TableButton")
@@ -1682,9 +1816,9 @@ class MainWindow(QMainWindow):
                     reset.clicked.connect(
                         lambda _=False, key=line.key: self.reset_cfg_override(key)
                     )
-                    table.setCellWidget(row, 2, reset)
+                    table.setCellWidget(row, 3, reset)
 
-                table.setItem(row, 3, QTableWidgetItem(""))
+                table.setItem(row, 4, QTableWidgetItem(""))
 
         for row, (kind, key) in enumerate(self._cfg_row_kind):
             if kind == "header":
@@ -1743,7 +1877,7 @@ class MainWindow(QMainWindow):
                     cell.setText(str(line.value))
                     cell.setForeground(Qt.gray)
 
-            reset_button = table.cellWidget(row, 2)
+            reset_button = table.cellWidget(row, 3)
             if isinstance(reset_button, QPushButton) and line.key not in LINKED_CFG_KEYS:
                 reset_button.setEnabled(line.overridden)
                 if line.overridden:
@@ -1755,7 +1889,7 @@ class MainWindow(QMainWindow):
                     reset_button.setText("Reset")
                     reset_button.setToolTip("Already matches the recommendation")
 
-            why = table.item(row, 3)
+            why = table.item(row, 4)
             if why is not None:
                 summary = command.get("summary", line.comment)
                 if line.overridden:
@@ -2026,6 +2160,31 @@ class MainWindow(QMainWindow):
         return "Performance impact — " + " · ".join(
             f"{resource.upper()}: {_cost_label(cost)}" for resource, cost in breakdown
         )
+
+    @staticmethod
+    def _cfg_category_badge_html(command: dict) -> str:
+        """Same coloured-tag idea as the settings table's Impact column, but
+        for User.cfg's Category column - a subsystem label (which group this
+        command belongs to), not a cost magnitude, since cfg_commands.json
+        has no per-option cost curve to draw one from. Only cpu_threading/
+        render_pipeline/post_process/world_render map to an unambiguous
+        resource; everything else gets no tag rather than a guessed one."""
+        resource = CFG_GROUP_RESOURCE.get(command.get("group", ""))
+        if resource is None:
+            return ""
+        return (
+            f"<span style='color:{theme.RESOURCE_COLOUR[resource]}; font-weight:600;"
+            f" font-size:10px'>{resource.upper()}</span>"
+        )
+
+    @staticmethod
+    def _cfg_category_tooltip(command: dict) -> str:
+        group = command.get("group", "")
+        title = CFG_GROUP_TITLES.get(group, group or "Uncategorised")
+        resource = CFG_GROUP_RESOURCE.get(group)
+        if resource is None:
+            return f"Category: {title} (no single resource this command's cost maps to)"
+        return f"Category: {title} — mainly a {resource.upper()} subsystem command"
 
     def _update_setting_detail(
         self, choice: "SettingChoice", setting: dict | None
