@@ -142,6 +142,19 @@ def test_build_args_an_explicit_template_overrides_pid_preference(tmp_path):
     assert args == [str(exe), "-p", "bf6.exe", "-o", str(tmp_path / "out.csv")]
 
 
+def test_default_templates_terminate_after_the_timed_capture(tmp_path):
+    """Confirmed live (2026-09-09): --timed alone only stops *recording*,
+    not the process - without --terminate_after_timed, PresentMon sits
+    running until run_capture's own subprocess timeout fires, and a
+    hand-killed process leaves its ETW session dangling for the next
+    attempt to trip over. Pin the flag in both default templates."""
+    exe = tmp_path / "PresentMon.exe"
+    by_name = benchmark.build_args(exe, "bf6.exe", tmp_path / "out.csv", 30, pid=None)
+    by_pid = benchmark.build_args(exe, "bf6.exe", tmp_path / "out.csv", 30, pid=4321)
+    assert "--terminate_after_timed" in by_name
+    assert "--terminate_after_timed" in by_pid
+
+
 # -- run_capture error handling (mocked subprocess) --------------------------
 
 def test_run_capture_raises_on_nonzero_exit(tmp_path, monkeypatch):

@@ -70,7 +70,12 @@ with which hardware resource(s) it meaningfully costs — GPU (teal), CPU (pink)
 VRAM (purple) — colour-matched to a legend above the table, so scanning down
 the column shows at a glance which settings are worth lowering first on a
 CPU-limited machine versus a GPU-limited one (the same colours and cost labels
-reappear when you click a row for the full detail pane).
+reappear when you click a row for the full detail pane). The `User.cfg` table
+has a matching **Category** column, reusing the same GPU/CPU colours — but it
+labels which subsystem a command belongs to, not a cost magnitude, since
+`cfg_commands.json` has no per-option cost curve the way in-game settings do;
+commands with no single clear resource (VSync, the FPS overlay, and so on) are
+left untagged rather than guessed.
 
 **Compares** — reads your *current* settings out of `PROFSAVE_profile` and your
 existing `User.cfg`, then shows every single change side by side with what it
@@ -80,14 +85,22 @@ before you have seen that list. See below.
 **Remembers more than one setup** — the 4 presets are a starting point; the
 sidebar's "Profiles" card lets you save the current preset, target and every
 override under a name ("Tournament", "Chill") and switch between as many as
-you want, not just tweak the same one slot.
+you want, not just tweak the same one slot. **Export**/**Import** share a
+profile as a single `.json` file — hand your exact configuration to a
+teammate instead of describing it. Import only adds it to the list; you
+still press Load yourself to actually apply it, same as any other saved
+profile.
 
 **Checks its own homework** — the Benchmark tab drives
 [PresentMon](https://github.com/GameTechDev/PresentMon) (the same open-source
 capture engine behind NVIDIA FrameView and CapFrameX) while you actually play,
 then shows the measured average / 1% low / 0.1% low FPS next to what the app
 predicted for those exact settings. Every capture is saved automatically.
-PresentMon itself is not bundled — point the app at your own copy once.
+PresentMon itself is not bundled — point the app at your own copy once. Uses
+the PresentMon 2.x console application's actual current flags, including
+`--terminate_after_timed` (without it, PresentMon stops *recording* at the
+end of the timed capture but keeps running, which looks like a hang and can
+leave a stale trace session for the next attempt to trip over).
 
 **Writes** — `User.cfg` into the game folder (with the right extension, which is
 the single most common reason these files "do nothing"), and optionally patches
@@ -378,7 +391,7 @@ only thing that needs changing.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests -q          # 233 tests
+python -m pytest tests -q          # 234 tests
 PYTHONPATH=src python -m bf6tuner --preset competitive   # CLI, runs on Linux too
 ```
 

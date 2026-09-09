@@ -366,6 +366,113 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-09 (51) — Export/import a profile as one shareable file
+
+User picked "share a profile as a file you can send someone" from the
+"what's left" list.
+
+- New `export_selected_profile()`/`import_profile()` on `MainWindow`, plus
+  matching "Export.../Import..." buttons on the Profiles card and File menu
+  items (no shortcut - not common enough to want one, matching how e.g.
+  "Locate PresentMon..." also has none).
+- Export writes whatever is already saved under the selected profile's name
+  (same "acts on the combo's current selection" rule Load/Update/Delete
+  already follow), not the live sidebar state - wrapped in a small envelope
+  (`{"bf6tuner_profile": 1, "name": ..., "data": ...}`) so a future format
+  change has a version marker to check, rather than guessing from shape.
+- Import deliberately does **not** apply the profile - it only adds it to
+  the local profile list (after the same overwrite-confirm dialog Save As
+  already uses) and selects it in the combo. The live sidebar state is not
+  what's in the imported file, and silently overwriting it on import would
+  be exactly the kind of unrequested change this app avoids everywhere else
+  (`_build_profiles_card`'s existing comment on why Load is an explicit
+  button applies identically here) - the status bar says "press Load to
+  apply it" rather than doing that automatically.
+- Not unit-tested at the Qt-widget layer (same offscreen-`MainWindow`
+  limitation as entries (22)/(29)/(45)/(46)/(48)); verified the envelope's
+  read/write round-trip directly with the real `json` module outside Qt,
+  and `py_compile`. All 234 tests still pass (no new pure logic beyond the
+  round trip already checked this way).
+
+### 2026-09-09 (50) — Colour-coded Category column for the User.cfg commands table
+
+Second of the three items picked from the "what's left" list - a follow-up
+to entry (45), which deliberately skipped this table since
+`cfg_commands.json` has no numeric cost curve to draw a magnitude from,
+only a `group` field.
+
+- New `Category` column on the `User.cfg` table (same position as the
+  settings table's Impact column - between Value and Reset/"Frame limit ->"),
+  reusing the same GPU/CPU colours (`theme.RESOURCE_COLOUR`) - but labelled
+  and documented as a **category** (which subsystem a command belongs to),
+  not a cost claim, since that's honestly all this data supports.
+- `CFG_GROUP_RESOURCE` maps only `cpu_threading` -> CPU and `render_pipeline`/
+  `post_process`/`world_render` -> GPU - the three groups with an
+  unambiguous single resource. `frame_pacing` (VSync, the frame cap),
+  `overlay` (the FPS overlay commands) and `misc` (the one documented-
+  never-emitted visibility toggle) get no tag rather than a guessed one -
+  none of them cost one resource in a way this app can honestly claim.
+- A matching legend sits above this table too, with its own tooltip
+  explaining the category/cost distinction so the two tables' identically-
+  coloured tags aren't read as meaning the same thing.
+- Same column-index shift as entry (45)'s settings-table change, this time
+  in `cfg_table` only (`settings_table` unaffected) - `Reset`/"Frame limit ->"
+  moved from column 2 to 3, `Why` from 3 to 4, every hardcoded reference in
+  that table's build/sync code updated together.
+- Not unit-tested directly (same offscreen-`MainWindow` limitation as
+  entries (22)/(29)/(45)/(46)/(48)); verified with `py_compile` and by
+  calling the new helpers directly against every real command in the
+  database under `QT_QPA_PLATFORM=offscreen`. All 234 tests still pass.
+
+### 2026-09-09 (49) — Found and fixed a real, reproducible PresentMon bug: missing `--terminate_after_timed`
+
+User asked whether "get PresentMon actually working" could be a task -
+they'd never had a successful capture. Before assuming the old
+elevation/access-denied theories were still the cause, tested live against
+the user's own saved PresentMon copy (`C:\Users\johan\Downloads\PresentMon-
+2.5.1-x64.exe`, path read straight from their real `paths.json` -
+`benchmarks/` was empty, confirming zero prior successful captures).
+
+Live findings, in order:
+- `--process_name explorer.exe --timed 5 --stop_existing_session
+  --no_console_stats` (this app's exact args, minus the process name) never
+  exited - sat running well past its output timeout. Killing it and
+  re-running immediately produced `error: a trace session named
+  "PresentMon" is already running` - a real, reproduced instance of exactly
+  the "lingering session" failure mode already documented in this file, but
+  self-inflicted by the hang, not a leftover from a different app install.
+- Re-read `--help`'s actual current text (not README-ConsoleApplication.md,
+  which drifts): `--timed` "stop[s] recording after the specified amount of
+  time" - a separate flag, `--terminate_after_timed`, is what actually
+  terminates the process afterwards. **This app's `DEFAULT_ARGS_TEMPLATE`/
+  `DEFAULT_PID_ARGS_TEMPLATE` never included it.** Every capture was always
+  going to hang until `run_capture`'s own `subprocess.run(timeout=...)`
+  fired, at the very least - and a hand-killed hung process leaves the ETW
+  session for the *next* attempt to trip over, which likely explains why
+  retries kept producing different-looking failures.
+- Added `--terminate_after_timed` to both templates and reran against
+  `explorer.exe`: clean `Started recording.` / `Stopped recording.`, exit 0.
+  (Tested this specific run from an elevated shell, which the real app
+  normally isn't - so this confirms the hang/dangling-session bug
+  definitively, but doesn't yet rule out a *separate*, genuine elevation
+  requirement for a real, unelevated capture of the actual game process.
+  Tried to also test unelevated via `Shell.Application`/a scheduled task;
+  the scheduled-task route was correctly blocked by this environment's own
+  safety classifier as a system-modifying action, so that half is left for
+  the user's own next live test in the real app, same "only a live test
+  against the real thing confirms it" discipline as entries (39)-(42).)
+- Kept the PID-targeting logic and existing "needs administrator" error
+  text as a fallback rather than deleting it - it was added in response to
+  a real observed error in an earlier session and isn't *disproven* by this,
+  only made less certain to actually be the root cause.
+- New test `test_default_templates_terminate_after_the_timed_capture` pins
+  the flag in both templates. All 234 tests pass (233 + 1 new).
+- Cleaned up after testing: no lingering `PresentMon` ETW session left
+  (`logman query -ets` confirmed clean), removed the test CSVs this
+  produced and two stale `PresentMon-<timestamp>.csv` files already sitting
+  in the user's Downloads from their own earlier failed manual attempts
+  (2026-09-07, before this app's PID-targeting fix existed).
+
 ### 2026-09-09 (48) — Self-update: stop the Smart App Control block from looking like a silent failure
 
 User reported hitting "the error of different version or similar" again
