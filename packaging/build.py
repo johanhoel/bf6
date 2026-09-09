@@ -60,6 +60,15 @@ def verify_data() -> None:
         json.loads(path.read_text(encoding="utf-8"))
     log(f"database verified: {len(DATASETS)} datasets present and parse cleanly (plain JSON, unencrypted)")
 
+    # keybind_concepts.json is a separate dataset (see keybinds.py), not one
+    # of database.py's DATASETS - bundled the same way (see bf6tuner.spec),
+    # verified the same way.
+    keybinds_path = DATA / "keybind_concepts.json"
+    if not keybinds_path.is_file():
+        raise SystemExit(f"Missing keybind data: {keybinds_path}")
+    json.loads(keybinds_path.read_text(encoding="utf-8"))
+    log("keybind_concepts.json verified: present and parses cleanly")
+
 
 def write_build_info() -> Path:
     """Record the commit this build was made from, so the running app can ask
