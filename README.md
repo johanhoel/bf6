@@ -312,6 +312,7 @@ Five JSON datasets under `data/`, bundled as plain files at build time (see
 | `cfg_commands.json` | 39 `User.cfg` commands, each with a **confidence level** (`documented` / `community` / `legacy`), a **risk level**, a hardware policy, an explanation, and pros/cons for the 19 that are actually emitted |
 | `ingame_settings.json` | 39 in-game settings with per-preset values, VRAM gates, a per-option **cost curve** in percent of frame time, and **directional pros and cons** for raising or lowering each one. 7 are marked `confidence: unverified` — sharpening, view/LOD distance, reflection quality, and weapon FOV are plausible additions never sourced from a confirmed profile; display mode, texture filtering, and camera shake were found missing the same flag in an audit and brought in line. None of the 7 carry a profile key, so none are ever written automatically |
 | `system_tweaks.json` | 14 OS/BIOS/driver checks with trigger conditions |
+| `keybind_concepts.json` | Key-binding decode data — see "Key bindings" below |
 
 Commands are marked `legacy` when they are real Frostbite console variables from
 BF3/BF4/BFV that may be silent no-ops in BF6. Those are excluded by default
@@ -320,6 +321,31 @@ in the database purely so they can be documented as *never* emitted — forcing 
 DX12 backend (a known cause of `DXGI_ERROR_DEVICE_HUNG` on GTX 10-series), and
 anything that removes the skybox or the HUD, which is a visibility exploit and
 exactly the shape of change anti-cheat and tournament rules care about.
+
+## Key bindings
+
+The **Key Bindings** tab shows your real, currently-saved keyboard bindings —
+read-only, straight from `PROFSAVE_profile`'s `GstKeyBinding.<category>.<concept>.<slot>.*`
+entries. Nothing is ever written here.
+
+Why read-only, stated plainly: Battlefield 6's own encoding for *keyboard*
+bindings is confirmed — cross-referenced directly against a live install's
+Edit Key Bindings menu (five independent matches) against the public,
+standard DirectInput `DIK_*` scan-code table. That table is a decades-old
+Microsoft API standard, not something Frostbite- or BF6-specific, which is
+also why it was safe to trust once confirmed. *Mouse* and *controller*
+bindings are a different story — the numbers don't fit a simple index and
+aren't decoded, so they show their raw stored values rather than a guess.
+Getting a **read** wrong here just means an incomplete label; getting a
+**write** wrong means silently corrupting your real controls, which is a
+much higher bar this app hasn't cleared yet. If you use it and something
+looks off, that's exactly the kind of thing to flag.
+
+One concrete lesson already learned building this: Frostbite only writes a
+binding to your profile once you've opened that specific keybind *page* in
+the in-game menu — an untouched page's default binding exists in the UI but
+not in the file at all. So a concept missing from the Key Bindings tab
+usually means "not customized yet," not "doesn't exist."
 
 ## Accuracy, honestly
 
@@ -337,7 +363,7 @@ only thing that needs changing.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests -q          # 203 tests
+python -m pytest tests -q          # 211 tests
 PYTHONPATH=src python -m bf6tuner --preset competitive   # CLI, runs on Linux too
 ```
 
@@ -346,7 +372,8 @@ engine and UI can be exercised anywhere.
 
 ```
 bf6/
-├── data/                 five JSON datasets (the database)
+├── data/                 six JSON datasets (the database + keybind concepts)
+├── examples/             real BF6 PROFSAVE_profile / User.cfg reference dumps
 ├── src/bf6tuner/
 │   ├── hardware.py       detection: CIM, registry, core topology, display modes
 │   ├── paths.py          finding the game and its two config files
@@ -356,6 +383,7 @@ bf6/
 │   ├── compare.py        current vs recommended, impact and trade-offs
 │   ├── writer.py         rendering, restore points, PROFSAVE patching, reports
 │   ├── database.py       plain-JSON loader (bundled data/, frozen or not)
+│   ├── keybinds.py       read-only key-binding decoder (see "Key bindings" below)
 │   ├── update.py         checks GitHub for a newer build, never blocks or raises
 │   ├── icon.py           the app icon, drawn in pure Python - shared by the build and the running app
 │   ├── benchmark.py      real frame-time capture via PresentMon, checked against the prediction

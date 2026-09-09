@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import APP_NAME, __version__
-from .. import benchmark, compare, database, hardware, icon, paths, prefs, update, writer
+from .. import benchmark, compare, database, hardware, icon, keybinds, paths, prefs, update, writer
 from ..engine import LINKED_CFG_KEYS, PRESETS, Recommendation, Target, recommend
 from . import theme
 from .locate import LocateDialog
@@ -733,6 +733,9 @@ class MainWindow(QMainWindow):
 
         self.checks_area = self._make_scroll()
         self.tabs.addTab(self.checks_area, "System checks")
+
+        self.keybinds_area = self._make_scroll()
+        self.tabs.addTab(self.keybinds_area, "Key Bindings")
 
         self.tabs.addTab(self._build_benchmark_tab(), "Benchmark")
         self._fill_benchmark_results()
@@ -2230,7 +2233,73 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(
             "Hardware detected." if p.detected else "Using a sample profile - detection unavailable here."
         )
+        self._refresh_keybinds()
         self.refresh()
+
+    def _refresh_keybinds(self) -> None:
+        """Populate the read-only Key Bindings tab from the real
+        PROFSAVE_profile. Independent of preset/target - keybinds don't
+        affect the FPS prediction at all - so this only needs to re-run
+        when the game paths (re)detect, not on every refresh().
+        """
+        container = self.keybinds_area.widget()
+        layout = container.layout()
+        while layout.count():
+            item = layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        if not self.game.profsave or not self.game.profsave.is_file():
+            layout.addWidget(dim(
+                "PROFSAVE_profile not found - use Locate... to point at it, then "
+                "re-detect hardware, to read your real key bindings."
+            ))
+            layout.addStretch(1)
+            return
+
+        try:
+            text = self.game.profsave.read_text(encoding="utf-8", errors="ignore")
+            bindings = keybinds.read_keybindings(text)
+        except Exception as exc:
+            layout.addWidget(dim(f"Could not read key bindings: {exc}"))
+            layout.addStretch(1)
+            return
+
+        names = keybinds.dik_names()
+        note = dim(
+            "Read-only - this app never writes key bindings. Keyboard bindings are "
+            "confirmed against the public DirectInput scan-code standard, "
+            "cross-checked directly against this real profile. Mouse and controller "
+            "bindings are not decoded yet and show their raw stored values. A few "
+            "labels are marked (confirmed) - checked directly against the in-game "
+            "menu; the rest are inferred from Battlefield 6's own internal names "
+            "and may not be exact."
+        )
+        layout.addWidget(note)
+
+        current_category = None
+        for binding in sorted(bindings, key=lambda b: (b.category, b.label)):
+            if binding.category != current_category:
+                current_category = binding.category
+                heading = QLabel(current_category.upper())
+                heading.setObjectName("CardTitle")
+                layout.addWidget(heading)
+            frame, inner = card("")
+            label_text = binding.label
+            if not binding.label_confirmed:
+                label_text += " (label not menu-confirmed)"
+            title = QLabel(f"<b>{label_text}</b>")
+            title.setWordWrap(True)
+            inner.addWidget(title)
+            inner.addWidget(dim(" / ".join(binding.display_slots(names))))
+            layout.addWidget(frame)
+
+        if not bindings:
+            layout.addWidget(dim(
+                "No key bindings found in your profile yet - Battlefield 6 only "
+                "writes a binding once its settings page has been opened in-game."
+            ))
+        layout.addStretch(1)
 
     # -- update check --------------------------------------------------------
 

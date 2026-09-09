@@ -366,6 +366,111 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-09 (31) — Read-only Key Bindings tab, built on real cross-referenced data
+
+User asked for keyboard/mouse binding config, explicitly told to research
+it online rather than guess, and provided real reference files
+(`examples/PROFSAVEbf6mp_profile`, `examples/user.cfg` - now committed,
+public repo, confirmed with the user first since they're real config
+dumps) plus screenshots of their actual in-game Edit Key Bindings menu.
+User later clarified: BF6-specific only, never assume another Battlefield
+title's scheme applies.
+
+**Research chain, in order, each step gated on the previous actually
+confirming something:**
+1. Read the user's real, live `PROFSAVEbf6mp_profile` directly (PowerShell,
+   this machine) - found `GstKeyBinding.infantry.<Concept>.<slot>.{axis,
+   button,negate,type}`, 71 distinct concepts, entirely unprompted by any
+   web search - ground truth first.
+2. Websearched for the format's meaning. Found conflicting answers: an EA
+   Forums summary (BF2042) says `type: 0=mouse, 2=keyboard`; a BF4 GitHub
+   example's own docs say `type: 0=keyboard, 1=joystick axis, 2=joystick
+   button`. **These directly contradict each other** - concrete proof
+   Frostbite's type-code meaning is not stable across titles, so neither
+   could be trusted for BF6 without independent confirmation. (Fandom, the
+   most promising-looking source, returned HTTP 402 to every fetch attempt
+   - blocked, not just unhelpful.)
+3. Cross-referenced the user's first screenshot (a "GENERAL" keybinds page)
+   against the raw file: "Big Map"=M matched `ConceptMapSize` button 50;
+   "Quick Loadout Customization"=Y matched `ConceptQuickLoadout` button 21;
+   "Interact/Quick Upgrade"=E matched `ConceptSplitInteractQuickUpgrade`
+   button 18; "Toggle Inventory/Scoreboard"=Tab matched
+   `ConceptGraniteScoreboardMenu` button 15; a later screenshot's "Throw
+   Grenade"=G matched button 34. All five are exactly the public,
+   standard DirectInput `DIK_*` scan-code table (`DIK_M`=0x32=50 etc.,
+   confirmed against a GitHub gist listing + a websearch corroborating the
+   same three specific values independently) - a decades-old Microsoft API
+   standard, not Frostbite-specific, which is *why* it was safe to trust
+   once actually confirmed rather than assumed. `button 255` confirmed as
+   the "unbound" sentinel (matched a screenshot's own "Unbound" label).
+   "Vehicle Seat 1"=F1 in the same first screenshot, plus Seats 2-6
+   sequentially F2-F6 in the raw file, corroborates the same table further.
+4. Tried the same rigor for mouse (type 0/1, always paired with `axis 56`):
+   hit a real, confirmed data limitation instead of a wrong guess - a
+   second screenshot showed "Gadget One"=Mouse 4, "Gadget Two"=Mouse 5, but
+   neither concept appears anywhere in the raw file at all. Root cause,
+   confirmed by testing: **Frostbite only serializes a binding once its
+   settings *page* has actually been opened in-game** - an untouched
+   page's default shown in the UI was never written to the file, so
+   there was nothing to cross-reference. A third screenshot then revealed
+   a *second* category, "GUNNER KEYBINDS" (not just "infantry") - the
+   same untouched-page explanation, not a hardcoded two-category
+   assumption, so the parser was written to keep whatever categories
+   are actually present rather than filter to a hardcoded list.
+5. Given (2)-(4): keyboard (type 2) is confidently decodable; mouse
+   (type 0/1) and controller (type 3/4) are not, and won't be guessed.
+
+**What shipped**, deliberately scoped to **read-only** (see `keybinds.py`'s
+own docstring for the full reasoning - a wrong *read* is an incomplete
+label, a wrong *write* silently breaks someone's real controls, and that
+higher bar hasn't been met yet, especially for mouse/controller):
+- `data/keybind_concepts.json`: the confirmed DIK table, the `unbound`
+  sentinel, and friendly labels for all 71 concepts found in the user's
+  real profile - each explicitly flagged `confirmed: true` (6, screenshot-
+  verified: Big Map, Quick Loadout Customization, Interact/Quick Upgrade,
+  Toggle Inventory/Scoreboard, Enter/Exit Vehicle, Vehicle Seat 1) or
+  `confirmed: false` (the other 65 - inferred from the concept's own
+  internal name, plausible but not menu-verified). One live example of why
+  that distinction matters: `ConceptSelectInventoryItem7`'s inferred label
+  is almost certainly wrong (its real value is "I", matching a screenshot's
+  "Weapon Inspect", not a 7th inventory slot) - left as-is rather than
+  silently "fixed" on a single coincidental key match, and noted here for
+  whoever revisits it with better data.
+- `src/bf6tuner/keybinds.py`: `parse_keybindings()` (pure - {(category,
+  concept): {slot: {field: value}}}, no dependency on the label data) and
+  `read_keybindings()` (adds friendly labels, never drops an unlabelled
+  real binding - shows the raw concept name instead of hiding it).
+  `BindingSlot.display()` decodes type 2 via the confirmed table, and is
+  explicit rather than silent about type 0/1/other ("Mouse (raw axis=X
+  button=Y, type=Z - not decoded)") - never invents a key name for what
+  isn't confirmed.
+- `ui/app.py`: new read-only **Key Bindings** tab, populated once per
+  hardware/path (re)detection (`_refresh_keybinds`, called from
+  `_on_detected`) - independent of preset/target since keybinds don't
+  affect the FPS prediction. Grouped by category, confirmed labels shown
+  plain, inferred ones suffixed "(label not menu-confirmed)".
+- `packaging/bf6tuner.spec` + `build.py`'s `verify_data()`: bundle and
+  validate `keybind_concepts.json` the same way as the other 5 datasets
+  (it's a separate dataset from `database.py`'s `DATASETS`, not folded in).
+- 8 new tests (`tests/test_keybinds.py`) against hand-built payloads,
+  including a regression test pinning the exact 6 cross-referenced DIK
+  values so the table can't drift without a test failure forcing a
+  re-look. All 211 tests pass (203 + 8).
+- `examples/PROFSAVEbf6mp_profile` and `examples/user.cfg` (the user's real
+  reference dumps) committed to the repo at the user's confirmed choice -
+  this is a public repo, confirmed before committing real config data.
+- **Not done, deliberately**: no write/remap support (needs the same
+  confirmation rigor for the write path specifically, not just reads);
+  mouse/controller decoding (needs the user to visit those keybind pages
+  in-game first, so there's something to cross-reference); a large
+  separate inventory of confirmed-real `GstRender.*`/`GstAudio.*` keys and
+  `perfoverlay.*`/`postprocess.*`/`worldrender.*` `User.cfg` commands found
+  in the same example files (87 new `GstRender.*` keys alone) - flagged,
+  not yet added to `ingame_settings.json`/`cfg_commands.json`, since each
+  one needs real pros/cons/cost-curve text, not just a confirmed key name;
+  next session should pick this up as its own scoped pass rather than
+  guessing gameplay-impact text for 80+ settings in one sitting.
+
 ### 2026-09-08 (30) — Preset buttons and the profile combo are now mutually exclusive
 
 Immediate follow-up to entry (29). User: when a custom profile is active,
