@@ -366,6 +366,32 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-09 (32) — Fixed a real bug entry (31) itself introduced: hardcoded tab indices
+
+User screenshot showed the new Key Bindings tab correctly populated with
+content, but labelled "Benchmark" - and a second, separate tab also said
+"Benchmark". Root cause: several places called `self.tabs.setTabText(N, ...)`
+/ `setCurrentIndex(N)` with a hardcoded integer position instead of looking
+up the tab by its widget. Inserting the Key Bindings tab before Benchmark
+in entry (31) shifted Benchmark from index 5 to 6, so the one leftover
+`setTabText(5, "Benchmark")` call (for the recording-count suffix) now
+silently relabelled the *new* tab at index 5 instead.
+
+Fixed properly, not by bumping the one number: every tab-root widget is
+now stored on construction (`_settings_tab_widget`, `_cfg_tab_widget`,
+`_benchmark_tab_widget` - `comparison_area`/`warnings_area`/`checks_area`/
+`keybinds_area` already were), and all 8 call sites across the file
+(`_focus_search`, `_goto_frame_limit`, the settings/cfg/benchmark tab-count
+suffixes, and the current-vs-recommended/warnings/system-checks count
+suffixes) now use `self.tabs.indexOf(<stored widget>)` instead of a
+literal position. A hardcoded index silently pointing at the wrong tab
+after any future reorder is exactly this bug's shape - fixed at the root
+so it structurally can't recur, not patched at the one spot that broke
+this time.
+
+All 211 tests pass (no behavior change these tests exercise - this is
+Qt-widget-layer wiring). Followed the standing build/release workflow.
+
 ### 2026-09-09 (31) — Read-only Key Bindings tab, built on real cross-referenced data
 
 User asked for keyboard/mouse binding config, explicitly told to research
