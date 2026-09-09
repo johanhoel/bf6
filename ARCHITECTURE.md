@@ -366,6 +366,109 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-09 (47) — Confirmed 11 more real `GstRender.*` keys: 3 promotions, 8 new settings, Resolution Scale/DRS family
+
+Continuation of the "what's left to do" list handed to the user - they
+picked "cover more of the ~80 leftover `GstRender.*` keys" as one of three.
+Re-ran the same cross-reference script entry (44) used and re-checked every
+candidate against the real profile before writing anything, per this
+project's standing no-fabrication rule.
+
+**Promoted 3 settings from `unverified` to `community`** now that a real
+profile confirms their keys exist (each seen at a real, if minimal, value):
+`sharpening` -> `GstRender.SharpnessSlider`, `reflection_quality` ->
+`GstRender.ReflectionQuality`, `texture_filtering` -> `GstRender.TextureFiltering`.
+They now actually write to `PROFSAVE_profile` - writing was never gated on
+`confidence`, only on `profsave_key` being present (checked `writer.py`
+first to be sure). Confirming the key is real is not the same as confirming
+the exact option count/range shown in-game - each promoted note says so
+explicitly rather than implying more certainty than exists.
+
+**8 new settings**, all confirmed real keys:
+- `screen_space_reflections` (`GstRender.ScreenSpaceReflections`) - a real
+  profile has this *and* `ReflectionQuality` present at once, confirming
+  they're two independently-tracked keys, not one setting under two names
+  (same trap as entry (44)'s Vegetation/Undergrowth pair - fixed
+  `reflection_quality`'s note, which used to describe itself as "screen-space
+  reflections," to stop conflating the two).
+- `vehicle_fov` (`GstRender.FieldOfViewVerticalVehicle`) - confirmed
+  independent of the on-foot FOV slider: the real profile has it set to 53,
+  *below* this app's own on-foot FOV range floor of 55, which alone rules out
+  it being derived from the main FOV value.
+- `fov_scale_ads`/`fov_scale_hipfire` (`GstRender.FieldOfViewScaleADS`/`Hip`) -
+  confirmed real, stored as plain 0/1 flags (not a percentage, despite the
+  name), but their exact in-game label/behaviour isn't independently
+  confirmed beyond the raw key name - given the same `never_write`/`"keep"`
+  treatment as `mouse_sensitivity` rather than asserting an opinion this app
+  can't back up.
+- `resolution_scale` (`GstRender.FixedResolutionScale`) - the classic fixed
+  render-resolution slider, confirmed real and distinct from an upscaler
+  (no reconstruction pass). Left at 100 in every preset: a modern upscaler is
+  a strictly better resolution/frame-rate trade on any GPU that has one, so
+  this is what's left for GPUs without one, or a manual override.
+- `dynamic_resolution_enable`/`_min_scale`/`_target_fps` (`GstRender.DRSEnabled`/
+  `DRSMinimumResolutionScale`/`DRSFrameRateTarget`) - Frostbite's dynamic
+  resolution scaling, on for the frame-rate-priority presets and off for
+  Quality. `_target_fps` is special-cased in `engine.py` to reuse the exact
+  same `frame_cap` computation `frame_limit` already uses (one `elif` branch,
+  mirroring how entry (44) wired `PerfOverlay.FpsDisplayOffsetX`) so the two
+  settings can never quietly disagree about what frame rate is being aimed
+  for.
+
+**Deferred, not guessed**: of the ~90 keys still missing after this round,
+26 are `GstRender.ShaderBundleVersion_<hash>` entries - per-machine shader
+cache stamps, not settings, excluded entirely rather than modelled. The
+remaining ~64 are real but need either vendor-specific research this app
+doesn't have confirmed (the Nvidia/AMD/Intel upscaler, frame-generation, and
+low-latency trios - three separate real keys per concept, and getting the
+per-vendor enum mapping wrong would be worse than the current gap where
+`upscaler` has no `profsave_key` at all and is display-only) or are cosmetic/
+accessibility settings with no clear "recommended" value this app could
+honestly assert (HUD/subtitle/colourblind/crosshair/UI-scale keys) or fields
+that look unused/legacy for BF6 specifically (`Stereoscopy`/`StereoConvergence`
+- VR fields BF6 doesn't advertise as a VR title). Left for a future round if
+asked.
+
+- 11 new settings-layer tests (233 total, up from 227): 3 for the promoted
+  keys' new `profsave_key`, 1 confirming all four "risk of conflation" pairs
+  (Vegetation/Undergrowth, Reflection Quality/Screen Space Reflections) map
+  to 4 distinct keys, 1 for vehicle FOV's independence, 2 (parametrized) for
+  the never-written FOV-scale toggles, 1 confirming DRS target == frame
+  limit, 4 (parametrized) for DRS-enable's per-preset value, 1 for resolution
+  scale being pinned at 100. `ingame_settings.json` now has 54 settings, not
+  46. README's database table and settings-row count updated to match.
+
+### 2026-09-09 (46) — "Skip this version" for the update banner
+
+Second of the three items the user picked from the "what's left" list.
+Updates here are tracked by commit sha, not a semantic version (see
+`update.py`'s module docstring) - "skip this version" means "don't nag
+again until `main` moves past this exact commit," not a version-number
+comparison.
+
+- New tiny prefs file, `update_skip.json` (`prefs.load_skipped_update_sha`/
+  `save_skipped_update_sha`) - deliberately **not** folded into the existing
+  `target.json`: `_save_target()` unconditionally overwrites that file with a
+  fixed key set on every preset/checkbox change, which would silently wipe a
+  skip recorded any other way.
+- `UpdateDialog` gained a "Skip this version" button, shown only when
+  `info.status == "update_available"`; it stores `info.latest_sha` and
+  closes the dialog.
+- `_on_update_checked()` in `app.py`: the skip **only** suppresses the
+  passive startup nag - the sidebar banner and the status-bar message on the
+  silent, on-launch check. An explicit **Check for updates** click (always
+  `silent=False`) shows the real state regardless of any stored skip -
+  skipping is about not being nagged passively, not about hiding a real
+  update from someone who explicitly asked. Once a newer commit lands,
+  `latest_sha` no longer matches the stored skip and the banner returns on
+  its own - no expiry logic needed.
+- Not unit-tested at the Qt-widget layer (same `MainWindow`-can't-construct-
+  offscreen limitation as entries (22)/(29)/(45)); the pure logic (the prefs
+  round trip) is tested directly - `test_skipped_update_sha_round_trip` in
+  `tests/test_paths.py`, matching the existing `test_target_round_trip`/
+  `test_profiles_round_trip` pattern in the same file. All 227 tests passed
+  at the point this entry was written (before entry (47)'s additions).
+
 ### 2026-09-09 (45) — Colour-coded Impact column on the in-game settings table
 
 User asked two things after entry (44): where the new CPU-saving settings

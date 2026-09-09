@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
     QMessageBox, QProgressBar, QPushButton, QVBoxLayout,
 )
 
-from .. import update
+from .. import prefs, update
 
 
 class _DownloadWorker(QThread):
@@ -110,6 +110,14 @@ class UpdateDialog(QDialog):
             compare = QPushButton("View full diff on GitHub")
             compare.clicked.connect(lambda: self._open(info.compare_url))
             buttons.addButton(compare, QDialogButtonBox.ActionRole)
+        if info.status == "update_available":
+            skip = QPushButton("Skip this version")
+            skip.setToolTip(
+                "Stops the update banner from reappearing for this commit. It comes "
+                "back once a newer one lands on main."
+            )
+            skip.clicked.connect(self._skip_this_version)
+            buttons.addButton(skip, QDialogButtonBox.ActionRole)
         self.close_button = buttons.addButton("Close", QDialogButtonBox.RejectRole)
         self.close_button.clicked.connect(self.reject)
         layout.addWidget(buttons)
@@ -148,6 +156,10 @@ class UpdateDialog(QDialog):
 
     def _open_commit(self, item: QListWidgetItem) -> None:
         self._open(item.data(Qt.UserRole))
+
+    def _skip_this_version(self) -> None:
+        prefs.save_skipped_update_sha(self.info.latest_sha)
+        self.reject()
 
     # -- self-update -----------------------------------------------------
 

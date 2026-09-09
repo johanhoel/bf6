@@ -101,6 +101,107 @@
       }
     },
     {
+      "id": "vehicle_fov",
+      "label": "Vehicle Field of View",
+      "menu": "Video > Basic",
+      "confidence": "community",
+      "profsave_key": "GstRender.FieldOfViewVerticalVehicle",
+      "type": "slider",
+      "min": 40,
+      "max": 100,
+      "unit": "° vertical",
+      "presets": {
+        "esports": 65,
+        "competitive": 65,
+        "balanced": 60,
+        "quality": 55
+      },
+      "impact": {
+        "gpu": 1,
+        "cpu": 1,
+        "vram": 0
+      },
+      "note": "A separate, confirmed-real FOV key for vehicle cameras - a real BF6 profile has this set narrower (53) than its on-foot Field of View, confirming it's an independently tracked value, not derived from the main FOV slider. Costs less overall than the main FOV setting since it only applies while you're actually in a vehicle, not for the whole match. Range is inferred from the one real value seen plus this app's own on-foot FOV range, not screenshot-confirmed against the in-game slider's exact limits.",
+      "personal": true,
+      "cost": {
+        "interpolate": true,
+        "50": {
+          "gpu": -1.0,
+          "cpu": -0.8
+        },
+        "70": {
+          "gpu": 0,
+          "cpu": 0
+        },
+        "90": {
+          "gpu": 1.5,
+          "cpu": 1.2
+        }
+      },
+      "tradeoff": {
+        "raise": {
+          "pros": [
+            "Wider view from the driver/gunner seat"
+          ],
+          "cons": [
+            "Distant targets shrink, same trade-off as the main FOV slider but only while mounted"
+          ]
+        },
+        "lower": {
+          "pros": [
+            "Distant targets appear larger while driving/gunning"
+          ],
+          "cons": [
+            "Narrower peripheral awareness in a vehicle"
+          ]
+        }
+      }
+    },
+    {
+      "id": "fov_scale_ads",
+      "label": "Scale FOV: Aim Down Sights",
+      "menu": "Video > Basic",
+      "confidence": "community",
+      "profsave_key": "GstRender.FieldOfViewScaleADS",
+      "type": "bool",
+      "presets": {
+        "esports": "keep",
+        "competitive": "keep",
+        "balanced": "keep",
+        "quality": "keep"
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Confirmed real key from a real BF6 profile, stored as a plain 0/1 flag rather than a percentage - but its exact in-game label and behaviour were not independently confirmed beyond the raw key name, so this app never changes it. Shown for completeness only.",
+      "personal": true,
+      "never_write": true
+    },
+    {
+      "id": "fov_scale_hipfire",
+      "label": "Scale FOV: Hip Fire",
+      "menu": "Video > Basic",
+      "confidence": "community",
+      "profsave_key": "GstRender.FieldOfViewScaleHip",
+      "type": "bool",
+      "presets": {
+        "esports": "keep",
+        "competitive": "keep",
+        "balanced": "keep",
+        "quality": "keep"
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Confirmed real key from a real BF6 profile, stored as a plain 0/1 flag rather than a percentage - but its exact in-game label and behaviour were not independently confirmed beyond the raw key name, so this app never changes it. Shown for completeness only.",
+      "personal": true,
+      "never_write": true
+    },
+    {
       "id": "resolution",
       "label": "Resolution",
       "menu": "Video > Basic",
@@ -270,6 +371,181 @@
           "cons": [
             "Frame times get spikier as the GPU hits its power limit",
             "Above refresh with VRR on, you fall out of the VRR window"
+          ]
+        }
+      }
+    },
+    {
+      "id": "resolution_scale",
+      "label": "Resolution Scale",
+      "menu": "Video > Basic",
+      "confidence": "community",
+      "profsave_key": "GstRender.FixedResolutionScale",
+      "type": "slider",
+      "min": 50,
+      "max": 100,
+      "unit": "%",
+      "presets": {
+        "esports": 100,
+        "competitive": 100,
+        "balanced": 100,
+        "quality": 100
+      },
+      "impact": {
+        "gpu": 5,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Confirmed real key, seen at 100 (its max) in a real BF6 profile - the classic fixed render-resolution slider, distinct from an upscaler (see Upscaling / Super Resolution): this renders at a plain lower pixel count and stretches, with no reconstruction pass to recover detail. Left at 100 in every preset here because a modern upscaler is a strictly better way to trade resolution for frame rate on any GPU that has one - this slider is what is left for GPUs without upscaler support, or as a manual override below the upscaler's own steps.",
+      "cost": {
+        "interpolate": true,
+        "50": {
+          "gpu": -18.0
+        },
+        "75": {
+          "gpu": -9.0
+        },
+        "100": {
+          "gpu": 0
+        }
+      },
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "Large, direct frame rate gain - the whole frame costs less to render",
+            "Works on any GPU, including ones with no upscaler at all"
+          ],
+          "cons": [
+            "Visibly softer/blockier image with nothing recovering the lost detail, unlike an upscaler"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Full native detail"
+          ],
+          "cons": [
+            "Costs the frame rate the lower scale was buying you"
+          ]
+        }
+      }
+    },
+    {
+      "id": "dynamic_resolution_enable",
+      "label": "Dynamic Resolution Scaling",
+      "menu": "Video > Basic",
+      "confidence": "community",
+      "profsave_key": "GstRender.DRSEnabled",
+      "type": "bool",
+      "presets": {
+        "esports": 1,
+        "competitive": 1,
+        "balanced": 0,
+        "quality": 0
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Confirmed real key - lets the engine automatically lower Resolution Scale under load to hold a target frame rate, instead of you living with the worst case at a fixed scale. On for the frame-rate-priority presets, where holding the target FPS matters more than a perfectly steady resolution; off for Quality, which prioritises consistent visuals over an adaptive frame rate. Exact BF6 tuning of the feature (how aggressively it reacts) is not independently confirmed beyond the real key names and values seen.",
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "Resolution never changes mid-match, which some players find more consistent to aim at"
+          ],
+          "cons": [
+            "Frame rate is only as good as the worst moment, all match long"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Automatically trades resolution for frame rate exactly when the GPU is under load, and gives it back when it isn't",
+            "Protects the frame rate floor without you having to hand-tune Resolution Scale for the worst case"
+          ],
+          "cons": [
+            "Resolution - and so image clarity - varies during a match"
+          ]
+        }
+      }
+    },
+    {
+      "id": "dynamic_resolution_min_scale",
+      "label": "Dynamic Resolution Minimum Scale",
+      "menu": "Video > Basic",
+      "confidence": "community",
+      "profsave_key": "GstRender.DRSMinimumResolutionScale",
+      "type": "slider",
+      "min": 25,
+      "max": 100,
+      "unit": "%",
+      "presets": {
+        "esports": 60,
+        "competitive": 65,
+        "balanced": 80,
+        "quality": 100
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Confirmed real key - the floor Dynamic Resolution Scaling is allowed to drop to; only matters while that's on. Lower on frame-rate-priority presets so the feature has real room to protect the frame rate under the heaviest moments; higher where visual consistency matters more.",
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "Gives Dynamic Resolution Scaling more room to protect the frame rate floor in the heaviest moments"
+          ],
+          "cons": [
+            "The worst-case image gets noticeably softer"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Keeps the image closer to native even at the lowest point Dynamic Resolution Scaling reaches"
+          ],
+          "cons": [
+            "Less room for the feature to actually protect the frame rate"
+          ]
+        }
+      }
+    },
+    {
+      "id": "dynamic_resolution_target_fps",
+      "label": "Dynamic Resolution Target Frame Rate",
+      "menu": "Video > Basic",
+      "confidence": "community",
+      "profsave_key": "GstRender.DRSFrameRateTarget",
+      "type": "slider",
+      "min": 30,
+      "max": 500,
+      "unit": "fps",
+      "presets": {
+        "esports": "computed",
+        "competitive": "computed",
+        "balanced": "computed",
+        "quality": "computed"
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Confirmed real key - the frame rate Dynamic Resolution Scaling tries to hold, only meaningful while that's on. Computed to match the same target as Frame Rate Limit, so the two settings can never disagree about what frame rate you're actually aiming for.",
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "Easier target for Dynamic Resolution Scaling to hold, so it drops resolution less often"
+          ],
+          "cons": [
+            "Gives up frame rate you might otherwise reach"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Higher targeted frame rate"
+          ],
+          "cons": [
+            "A harder target - Dynamic Resolution Scaling has to cut resolution more, and more often, to hold it"
           ]
         }
       }
@@ -529,7 +805,8 @@
       "id": "texture_filtering",
       "label": "Texture Filtering",
       "menu": "Video > Advanced",
-      "confidence": "unverified",
+      "confidence": "community",
+      "profsave_key": "GstRender.TextureFiltering",
       "type": "enum",
       "options": [
         {
@@ -556,7 +833,7 @@
         "cpu": 0,
         "vram": 1
       },
-      "note": "Anisotropic filtering keeps ground textures sharp at a distance. It has been effectively free on every GPU made in the last decade. Max it regardless of preset. Unverified: not confirmed against a real BF6 profile, so it is not written to your profile automatically - set it by hand.",
+      "note": "Anisotropic filtering keeps ground textures sharp at a distance. It has been effectively free on every GPU made in the last decade. Max it regardless of preset. Promoted from unverified: a real BF6 profile confirms this key exists (seen at its lowest value, 0), so it is now written automatically - the option count/labels above are still an inference, not screenshot-confirmed against the in-game slider's exact steps.",
       "cost": {
         "0": {
           "gpu": -0.7
@@ -2284,7 +2561,8 @@
       "id": "sharpening",
       "label": "Sharpening",
       "menu": "Video > Advanced",
-      "confidence": "unverified",
+      "confidence": "community",
+      "profsave_key": "GstRender.SharpnessSlider",
       "type": "slider",
       "min": 0,
       "max": 100,
@@ -2300,7 +2578,7 @@
         "cpu": 0,
         "vram": 0
       },
-      "note": "A contrast-adaptive sharpening pass, most useful paired with an upscaler or a resolution scale below 100%, both of which soften the image. Close to free on GPU time. Unverified: this app's authors have not confirmed BF6's exact menu wording or profile key for it, so it is not written to your profile automatically - set it by hand and treat the recommended value as a starting point.",
+      "note": "A contrast-adaptive sharpening pass, most useful paired with an upscaler or a resolution scale below 100%, both of which soften the image. Close to free on GPU time. Promoted from unverified: a real BF6 profile confirms this key exists (seen at its lowest value, 0.0), so it is now written automatically - the 0-100 range is still an inference from this app's own reasoning, not screenshot-confirmed against the in-game slider.",
       "cost": {
         "interpolate": true,
         "0": {
@@ -2398,7 +2676,8 @@
       "id": "reflection_quality",
       "label": "Reflection Quality",
       "menu": "Video > Advanced",
-      "confidence": "unverified",
+      "confidence": "community",
+      "profsave_key": "GstRender.ReflectionQuality",
       "type": "enum",
       "options": [
         { "value": 0, "label": "Off" },
@@ -2417,7 +2696,7 @@
         "cpu": 0,
         "vram": 0
       },
-      "note": "Screen-space reflections on wet surfaces, glass and water. Mostly cosmetic - it does not hide or reveal players the way vegetation or shadows do - so cutting it is close to a free GPU saving for competitive play. Unverified: not confirmed against a real BF6 profile, so it is not written to your profile automatically - set it by hand.",
+      "note": "Reflection fidelity on wet surfaces, glass and water. Mostly cosmetic - it does not hide or reveal players the way vegetation or shadows do - so cutting it is close to a free GPU saving for competitive play. Promoted from unverified: a real BF6 profile confirms this key exists (seen at its lowest value, 0). That same profile confirms GstRender.ScreenSpaceReflections is a separate, distinct key (see the Screen Space Reflections setting) - not the same slider under two names, so the two are modelled independently rather than merged.",
       "cost": {
         "1": {
           "gpu": 0
@@ -2447,6 +2726,52 @@
           ],
           "cons": [
             "Wet surfaces and glass look flat"
+          ]
+        }
+      }
+    },
+    {
+      "id": "screen_space_reflections",
+      "label": "Screen Space Reflections",
+      "menu": "Video > Advanced",
+      "confidence": "community",
+      "profsave_key": "GstRender.ScreenSpaceReflections",
+      "type": "bool",
+      "presets": {
+        "esports": 0,
+        "competitive": 0,
+        "balanced": 0,
+        "quality": 1
+      },
+      "impact": {
+        "gpu": 2,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "A confirmed real key, separate from Reflection Quality above - a real BF6 profile has both present at once, confirming they are independently tracked, not one setting under two names. Screen-space reflections trace reflections from what's actually on screen, layered on top of whatever Reflection Quality provides; turning this off falls back to the cheaper baseline. Same competitive logic as Reflection Quality: reflections rarely carry gameplay information, so cutting it is close to a free GPU saving.",
+      "cost": {
+        "0": {
+          "gpu": -2.0
+        },
+        "1": {
+          "gpu": 0
+        }
+      },
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "Close to a free GPU saving - reflections rarely carry gameplay information"
+          ],
+          "cons": [
+            "Wet surfaces, glass and puddles look flatter"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Sharper, more accurate reflections of on-screen geometry"
+          ],
+          "cons": [
+            "A real GPU cost for something you are rarely looking directly at in a firefight"
           ]
         }
       }

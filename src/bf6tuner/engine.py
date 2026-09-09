@@ -772,6 +772,12 @@ def recommend(
                 f" and a {target.refresh_hz} Hz display."
                 + (" Three below refresh keeps VRR engaged." if target.vrr else "")
             )
+        elif setting["id"] == "dynamic_resolution_target_fps":
+            # Same number as frame_limit above, computed once and reused -
+            # these two can never disagree about what frame rate is being
+            # targeted, because there is only one computation for it.
+            value = frame_cap
+            reason = f"Matches Frame Rate Limit's {frame_cap} FPS target."
         elif setting["id"] == "upscaler":
             value = upscaler
             tech = _upscaler_tech(gpu)

@@ -30,6 +30,7 @@ OVERRIDES_FILE = "setting_overrides.json"
 CFG_OVERRIDES_FILE = "cfg_overrides.json"
 PROFILES_FILE = "profiles.json"
 TARGET_FILE = "target.json"
+UPDATE_SKIP_FILE = "update_skip.json"
 
 
 def config_dir() -> Path:
@@ -169,3 +170,21 @@ def rename_profile(old: str, new: str) -> dict[str, Any]:
         values[new] = values.pop(old)
         save_profiles(values)
     return values
+
+
+# -- skipped update ------------------------------------------------------------
+# "Skip this version" remembers the commit sha the user dismissed, in its own
+# tiny file rather than folded into target.json - _save_target() there
+# unconditionally overwrites its file with a fixed key set on every preset/
+# checkbox change, which would silently wipe a skip recorded any other way.
+# Updates here are tracked by commit sha, not a semantic version number (see
+# update.py's module docstring), so "skip this version" means "don't nag
+# again until main moves past this exact commit" - once a newer commit
+# appears, the stored sha no longer matches and the banner returns.
+
+def load_skipped_update_sha() -> str:
+    return str(_read(UPDATE_SKIP_FILE).get("sha", ""))
+
+
+def save_skipped_update_sha(sha: str) -> None:
+    _write(UPDATE_SKIP_FILE, {"sha": sha})

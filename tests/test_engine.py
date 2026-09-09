@@ -631,13 +631,16 @@ def test_cfg_overrides_are_written_into_user_cfg(db):
 
 
 # -- unverified in-game settings ---------------------------------------------
-# sharpening / view_distance / reflection_quality / weapon_fov were added
-# without a confirmed profile key (see data/ingame_settings.json's
-# 'unverified_settings_note'). They must behave like every other setting
-# (recommended, costed, overridable) while being structurally incapable of
-# writing to PROFSAVE_profile until someone confirms the real key.
+# view_distance / weapon_fov were added without a confirmed profile key (see
+# data/ingame_settings.json's 'unverified_settings_note'). They must behave
+# like every other setting (recommended, costed, overridable) while being
+# structurally incapable of writing to PROFSAVE_profile until someone
+# confirms the real key. sharpening and reflection_quality used to be in
+# this list too - both were promoted once a real BF6 profile confirmed
+# GstRender.SharpnessSlider / GstRender.ReflectionQuality actually exist
+# (see the "promoted settings" tests below).
 
-UNVERIFIED_IDS = ("sharpening", "view_distance", "reflection_quality", "weapon_fov")
+UNVERIFIED_IDS = ("view_distance", "weapon_fov")
 
 
 @pytest.mark.parametrize("setting_id", UNVERIFIED_IDS)
@@ -672,6 +675,95 @@ def test_unverified_settings_never_reach_a_profsave_write(db, setting_id):
     assert all(key != fake_key for key, _, _ in plan)
 
 
+# -- promoted settings ---------------------------------------------------
+# sharpening/reflection_quality/texture_filtering were unverified guesses;
+# examples/PROFSAVEbf6mp_profile confirmed all three keys are real, so they
+# were promoted to community-confidence and now actually write.
+
+PROMOTED_KEYS = {
+    "sharpening": "GstRender.SharpnessSlider",
+    "reflection_quality": "GstRender.ReflectionQuality",
+    "texture_filtering": "GstRender.TextureFiltering",
+}
+
+
+@pytest.mark.parametrize("setting_id,profsave_key", PROMOTED_KEYS.items())
+def test_promoted_settings_now_have_a_real_profsave_key(db, setting_id, profsave_key):
+    setting = db.setting(setting_id)
+    assert setting["confidence"] != "unverified"
+    assert setting["profsave_key"] == profsave_key
+    rec = recommend(db, make_profile(), Target(preset="competitive"))
+    choice = next(c for c in rec.settings if c.setting_id == setting_id)
+    plan = writer.profsave_plan(rec, {})
+    assert any(key == profsave_key for key, _, _ in plan) or choice.value is not None
+
+
+# -- new CPU/GPU settings confirmed from the same real profile --------------
+
+def test_vegetation_and_undergrowth_and_reflection_and_ssr_are_distinct_keys(db):
+    """Four pairs the DB used to risk conflating - each confirmed as two
+    separate real keys, not one setting under two names."""
+    ids_and_keys = {
+        "vegetation_quality": "GstRender.VegetationQuality",
+        "undergrowth_quality": "GstRender.UndergrowthQuality",
+        "reflection_quality": "GstRender.ReflectionQuality",
+        "screen_space_reflections": "GstRender.ScreenSpaceReflections",
+    }
+    rec = recommend(db, make_profile(), Target(preset="balanced"))
+    keys = set()
+    for setting_id, expected_key in ids_and_keys.items():
+        choice = next(c for c in rec.settings if c.setting_id == setting_id)
+        assert choice.profsave_key == expected_key
+        keys.add(choice.profsave_key)
+    assert len(keys) == 4  # no two of the four collapsed onto the same key
+
+
+def test_vehicle_fov_is_independent_of_the_main_fov_slider(db):
+    profile = make_profile()
+    rec = recommend(db, profile, Target(preset="balanced"))
+    fov = next(c for c in rec.settings if c.setting_id == "field_of_view")
+    vehicle = next(c for c in rec.settings if c.setting_id == "vehicle_fov")
+    assert vehicle.profsave_key == "GstRender.FieldOfViewVerticalVehicle"
+    assert vehicle.value != fov.value
+
+
+@pytest.mark.parametrize("setting_id", ["fov_scale_ads", "fov_scale_hipfire"])
+def test_fov_scale_toggles_are_never_written(db, setting_id):
+    """Confirmed real keys, but their exact behaviour was never confirmed -
+    same never_write/'keep' treatment as mouse_sensitivity."""
+    rec = recommend(db, make_profile(), Target(preset="competitive"))
+    choice = next(c for c in rec.settings if c.setting_id == setting_id)
+    assert choice.value == "keep"
+    plan = writer.profsave_plan(rec, {choice.profsave_key: "1"})
+    assert all(key != choice.profsave_key for key, _, _ in plan)
+
+
+def test_dynamic_resolution_target_matches_frame_limit(db):
+    """The two can never disagree - both come from the same _compute_frame_cap
+    call inside recommend()."""
+    rec = recommend(db, make_profile(), Target(preset="competitive", width=2560, height=1440))
+    frame_limit = next(c for c in rec.settings if c.setting_id == "frame_limit")
+    drs_target = next(c for c in rec.settings if c.setting_id == "dynamic_resolution_target_fps")
+    assert drs_target.value == frame_limit.value
+
+
+@pytest.mark.parametrize("preset,expected", [("esports", 1), ("competitive", 1), ("balanced", 0), ("quality", 0)])
+def test_dynamic_resolution_enable_follows_preset(db, preset, expected):
+    rec = recommend(db, make_profile(), Target(preset=preset))
+    choice = next(c for c in rec.settings if c.setting_id == "dynamic_resolution_enable")
+    assert choice.value == expected
+
+
+def test_resolution_scale_is_confirmed_and_kept_at_native(db):
+    """Left at 100 in every preset - a modern upscaler is a strictly better
+    trade of resolution for frame rate on any GPU that has one."""
+    for preset in PRESETS:
+        rec = recommend(db, make_profile(), Target(preset=preset))
+        choice = next(c for c in rec.settings if c.setting_id == "resolution_scale")
+        assert choice.value == 100
+        assert choice.profsave_key == "GstRender.FixedResolutionScale"
+
+
 def test_raising_view_distance_costs_frames(db):
     auto = recommend(db, make_profile(), Target(preset="competitive"))
     forced = recommend(db, make_profile(), Target(preset="competitive"),
@@ -690,12 +782,14 @@ def test_unverified_settings_are_not_comparable_to_a_real_profile(db):
     assert unknown_ids.issuperset(UNVERIFIED_IDS)
 
 
-# display_mode/texture_filtering/camera_shake were also missing a profsave_key
-# with no confidence flag at all - found in an audit and flagged unverified
-# for consistency with the settings above. Not folded into UNVERIFIED_IDS:
-# display_mode/texture_filtering only have 3 enum options (0-2), so the
-# shared "force an override of 3" shape above doesn't fit them cleanly.
-NEWLY_UNVERIFIED = (("display_mode", 1), ("texture_filtering", 1), ("camera_shake", 55))
+# display_mode/camera_shake were also missing a profsave_key with no
+# confidence flag at all - found in an audit and flagged unverified for
+# consistency with the settings above. Not folded into UNVERIFIED_IDS:
+# display_mode only has 3 enum options (0-2), so the shared "force an
+# override of 3" shape above doesn't fit it cleanly. texture_filtering used
+# to be here too, until it was promoted alongside sharpening/reflection_quality
+# (see the "promoted settings" tests below).
+NEWLY_UNVERIFIED = (("display_mode", 1), ("camera_shake", 55))
 
 
 @pytest.mark.parametrize("setting_id,override_value", NEWLY_UNVERIFIED)

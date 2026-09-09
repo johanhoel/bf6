@@ -2403,13 +2403,23 @@ class MainWindow(QMainWindow):
         self.check_updates_button.setEnabled(True)
         self._busy_stop()
         self.update_info = info
-        self.update_button.setVisible(info.available)
+        # "Skip this version" only ever suppresses the passive startup nag
+        # (the sidebar button + status bar message below) - an explicit,
+        # non-silent check (the Check for updates button, or opening the
+        # dialog again) always shows the real state regardless of what was
+        # skipped before. Once main moves past the skipped commit,
+        # latest_sha no longer matches and the banner returns on its own.
+        skipped = (
+            silent and info.available and bool(info.latest_sha)
+            and info.latest_sha == prefs.load_skipped_update_sha()
+        )
+        self.update_button.setVisible(info.available and not skipped)
         if info.available:
             plural = "" if info.ahead_by == 1 else "s"
             self.update_button.setText(f"Update available ({info.ahead_by} commit{plural})")
 
         if silent:
-            if info.available:
+            if info.available and not skipped:
                 self.statusBar().showMessage(
                     f"An update is available - {info.ahead_by} commit(s) ahead of this build."
                 )
