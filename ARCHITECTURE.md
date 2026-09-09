@@ -366,6 +366,47 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-09 (48) — Self-update: stop the Smart App Control block from looking like a silent failure
+
+User reported hitting "the error of different version or similar" again
+during self-update's relaunch, referencing entry (42)'s already-diagnosed
+Smart App Control block. Rather than assume that's still the cause,
+re-checked `Microsoft-Windows-CodeIntegrity/Operational` directly (same
+technique as entry (42)/entry (17)) - found three fresh blocks that
+session, `explorer.exe` attempting to load `dist\BF6Tuner.exe`, "did not
+meet the Enterprise signing level requirements." Confirmed: same root
+cause, not a new bug, not the "parent process has different executable"
+error from entry (40) (which really is fixed) - the user was paraphrasing
+the SAC block dialog, not describing a recurrence of the old one.
+
+Entry (42) already established there is no code fix for the block itself -
+it happens at the kernel's Code Integrity layer regardless of how the
+process is launched, rejecting the fresh file hash's lack of reputation,
+not the launch method. What *was* still a real gap: `_on_download_ok()` in
+`update_dialog.py` handed off to the relaunch helper script and immediately
+quit the app with zero messaging - if the relaunch then got blocked, the
+user just saw the window disappear and nothing come back, indistinguishable
+from a silent failure.
+
+Asked the user how to handle it (four options: clearer messaging / revisit
+code signing / turn off Smart App Control - flagged as mostly irreversible
+short of a Windows reinstall / leave it as-is); they picked the messaging
+fix.
+
+- `_on_download_ok()` now shows a modal `QMessageBox.information` right
+  before quitting: says the update installed correctly, that BF6Tuner will
+  reopen automatically, and - if it doesn't within a few seconds - that this
+  is an expected Smart App Control/SmartScreen block on the fresh unsigned
+  hash, not an app bug, with the two concrete things to do instead (open the
+  exe by hand and click "Run anyway", or use `run-from-source.bat`).
+- Deliberately does not attempt to detect or wait for the block - there is
+  no reliable signal available to this process for "the relaunch got
+  blocked" versus "the relaunch is still starting up," so the message
+  covers both outcomes honestly instead of guessing which one happened.
+- Not unit-tested (pure Qt-widget-layer glue, same offscreen-`MainWindow`
+  limitation as entries (22)/(29)/(45)/(46)); verified with `py_compile`.
+  All 233 tests still pass (no new pure logic to test here).
+
 ### 2026-09-09 (47) — Confirmed 11 more real `GstRender.*` keys: 3 promotions, 8 new settings, Resolution Scale/DRS family
 
 Continuation of the "what's left to do" list handed to the user - they

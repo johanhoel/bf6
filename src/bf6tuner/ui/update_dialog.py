@@ -182,6 +182,27 @@ class UpdateDialog(QDialog):
         except update.SelfUpdateError as exc:
             self._on_download_failed(str(exc))
             return
+        # The file swap and relaunch attempt are handed off to the helper
+        # script at this point and will complete correctly (verified live,
+        # ARCHITECTURE.md entry (39)) - but the relaunch itself goes through
+        # Windows' ShellExecute, which Smart App Control/SmartScreen can
+        # still block outright for a fresh, unsigned, never-before-seen file
+        # hash (entry (42) - not something a code change here can route
+        # around). Without this message, that block looks like the update
+        # silently failed; say plainly what to expect and what to do instead
+        # before this window disappears.
+        QMessageBox.information(
+            self, "Update installed",
+            "The update was downloaded and installed. BF6Tuner will now close "
+            "and reopen automatically.\n\n"
+            "If it does not reopen within a few seconds, Windows likely blocked "
+            "the new build (Smart App Control or SmartScreen - expected for a "
+            "fresh, unsigned file with no reputation yet, not an app bug). If "
+            "that happens:\n"
+            "  - Open BF6Tuner.exe by hand and choose \"More info\" -> "
+            "\"Run anyway\" if prompted, or\n"
+            "  - Run run-from-source.bat instead.",
+        )
         # The helper script is now waiting for this process to exit - do that
         # cleanly rather than leaving the window open with nothing left to do.
         QApplication.instance().quit()
