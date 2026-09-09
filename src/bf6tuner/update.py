@@ -324,42 +324,45 @@ def apply_update_and_relaunch(new_exe: Path) -> None:
     current = Path(sys.executable)
     script = current.with_suffix(".update.bat")
     pid = os.getpid()
+    # Every `goto` here is a bare top-level statement, never inside a
+    # parenthesized `if (...)`/`for (...)` block. That's deliberate, not
+    # style: `goto` jumping out of a parenthesized compound statement is a
+    # well-known cmd.exe pitfall - the parser pre-reads the whole `( ... )`
+    # block before executing it, and a `goto` escaping mid-block leaves its
+    # paren-matching state corrupted, especially once the same block gets
+    # re-entered through a loop. Confirmed as the actual, sole cause of two
+    # live test failures that both looked identical to "the process got
+    # killed before it could run": running the exact script by hand gave a
+    # verbatim `cmd.exe` parse error ("10 was unexpected at this time"),
+    # not a silent kill. An earlier fix attempt (CREATE_BREAKAWAY_FROM_JOB,
+    # kept below as a harmless defensive addition) was aimed at a real but
+    # wrong theory and made no difference - this is the actual fix.
     script.write_text(
         "@echo off\r\n"
-        f":wait\r\n"
+        "set movetries=0\r\n"
+        ":wait\r\n"
         f'tasklist /fi "PID eq {pid}" 2>nul | find "{pid}" >nul\r\n'
-        f"if not errorlevel 1 (\r\n"
-        f"    timeout /t 1 /nobreak >nul\r\n"
-        f"    goto wait\r\n"
-        f")\r\n"
-        # The PyInstaller bootloader's own parent process can briefly hold
-        # the exe file handle a moment after the PID we waited for (the
-        # unpacked child, not the bootloader itself) has already exited -
-        # retry the move a few times rather than fail on the first
-        # "file in use" instead of guessing a single fixed delay is enough.
-        f":move\r\n"
+        "if errorlevel 1 goto move\r\n"
+        "timeout /t 1 /nobreak >nul\r\n"
+        "goto wait\r\n"
+        ":move\r\n"
         f'move /y "{new_exe}" "{current}" >nul 2>nul\r\n'
-        f"if errorlevel 1 (\r\n"
-        f"    set /a movetries+=1\r\n"
-        f"    if %movetries% lss 10 (\r\n"
-        f"        timeout /t 1 /nobreak >nul\r\n"
-        f"        goto move\r\n"
-        f"    )\r\n"
-        f")\r\n"
+        "if not errorlevel 1 goto launch\r\n"
+        "set /a movetries+=1\r\n"
+        "if %movetries% geq 10 goto launch\r\n"
+        "timeout /t 1 /nobreak >nul\r\n"
+        "goto move\r\n"
+        ":launch\r\n"
         f'start "" "{current}"\r\n'
-        f'del "%~f0"\r\n',
+        'del "%~f0"\r\n',
         encoding="utf-8",
     )
-    # DETACHED_PROCESS alone does not escape a Windows Job Object with
-    # kill-on-close semantics, which this process may well be running
-    # inside (common for sandboxed/automated launch wrappers) - without
-    # CREATE_BREAKAWAY_FROM_JOB, the helper script gets silently killed the
-    # instant this process exits, before it ever gets to move/relaunch
-    # anything. Confirmed happening for real, not theoretical: the first
-    # live test left a fully-downloaded new exe in place and an
-    # un-deleted, never-run .update.bat behind. Some job objects disallow
-    # breakaway entirely (Popen raises rather than ignoring the flag), so
-    # fall back to the plain flags rather than fail the whole update.
+    # CREATE_BREAKAWAY_FROM_JOB: not confirmed to matter (see above - the
+    # real bug was the batch syntax), but harmless to keep as a defensive
+    # extra in case some environment really does run this inside a
+    # kill-on-close Job Object. Some job objects disallow breakaway outright
+    # (Popen raises rather than ignoring the flag), so fall back to the
+    # plain flags rather than fail the whole update over this extra.
     base_flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
     try:
         subprocess.Popen(

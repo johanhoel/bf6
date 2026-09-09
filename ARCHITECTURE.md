@@ -366,6 +366,57 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-09 (35) — Actual root cause found: `goto` inside a parenthesized `if`, not job objects
+
+Entry (33)'s fix (`CREATE_BREAKAWAY_FROM_JOB`) was retested properly this
+time - an already-fixed, already-running process updating to a newer
+release (entry (34) explains why that setup specifically matters). **Same
+failure again.** This time, instead of guessing again, ran the actual
+leftover `.update.bat` directly by hand:
+
+```
+& "dist\BF6Tuner.update.bat"
+10 was unexpected at this time.
+```
+
+That's a `cmd.exe` **parse error**, not a silent kill - proving the job-
+object theory was never the real cause. Root cause: the script used
+`goto` *inside* a parenthesized `if (...)` block (`if not errorlevel 1 (
+timeout ... & goto wait )`), which is a well-known cmd.exe pitfall - the
+parser pre-reads the whole parenthesized block before executing it, and a
+`goto` escaping mid-block corrupts its paren-matching state, especially
+once the same block gets re-entered through a loop (exactly this script's
+shape: a retry loop whose body is itself inside `if (...)`). This bug was
+present from the very first version of this script (entry (26)) - the
+"fix more robust move-retry logic" added in entry (33) just added a
+*second* instance of the same pattern, so it failed exactly the same way.
+
+Fixed by rewriting every `goto` as a bare top-level statement
+(`if errorlevel 1 goto move` / `goto wait`), never nested inside `( )`.
+Verified twice before calling this done, not once: (1) hand-wrote a
+minimal version of the same shape and ran it directly - worked cleanly;
+(2) called the real `update.apply_update_and_relaunch()` with `sys.frozen`
+monkeypatched and fake file paths, inspected the *actual* generated
+script, then ran that exact file directly - move succeeded, launch was
+attempted (failed only because the fake "exe" was a text file, expected),
+script self-deleted. No parse error either time.
+
+`CREATE_BREAKAWAY_FROM_JOB` from entry (33) is kept - not confirmed to
+matter, but harmless, in case some environment genuinely does need it.
+
+**Lesson for whoever touches this script again**: never put `goto` inside
+a parenthesized compound statement in a Windows batch file. Test the
+literal generated `.bat` by running it directly by hand before trusting
+any theory about *why* it failed - a real parse error looks identical
+from the Python side to "the process got killed," and guessing between
+those two costs a full rebuild-and-live-test cycle each time you guess
+wrong (this took two).
+
+All 211 tests pass (no test exercises the batch content directly - it's
+Windows-only shell script generation; the manual verification above is
+the closest thing to a regression test this has). Followed the standing
+build/release workflow.
+
 ### 2026-09-09 (34) — Self-update fix from entry (33) can't test itself, by construction
 
 Retested entry (33)'s `CREATE_BREAKAWAY_FROM_JOB` fix the same way: leave a
