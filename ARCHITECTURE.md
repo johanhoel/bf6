@@ -366,6 +366,43 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-09 (34) — Self-update fix from entry (33) can't test itself, by construction
+
+Retested entry (33)'s `CREATE_BREAKAWAY_FROM_JOB` fix the same way: leave a
+build "behind," click "Download and install now." **Identical failure** -
+still closed and never came back. Before assuming the fix was wrong,
+inspected the actual leftover `.update.bat` byte-for-byte: it was the *old*
+script shape (no `:move` retry loop, no breakaway-related change visible in
+the generated content - though that flag isn't visible in the script text
+either way, this confirmed the *generating* code path hadn't changed).
+
+**The real issue: this class of fix cannot be verified the way it was
+tested.** `apply_update_and_relaunch` runs inside the *currently executing*
+process - whichever code is already loaded in memory, not whatever code
+happens to be sitting in the newly downloaded file next to it. The old,
+still-running exe is what builds and spawns the helper script, using its
+*own* (old, buggy) copy of the function - the fix living in the new
+download is irrelevant until that new exe actually starts running, which
+never happens because the swap step is exactly what's broken. So "update
+from an old, buggy build" will *always* exercise the old bug, no matter
+what's fixed in the target version. Confirmed directly: the leftover
+`.bat`'s content was the pre-entry-(33) shape, proving the old code
+generated it, not the new one.
+
+**Consequence for testing this properly**: the fix can only be verified by
+having an *already-fixed* running process perform an update to some
+*newer* version - never by updating a buggy build to a fixed one, since
+that always uses the buggy update path to do the swap. Recovered the
+interrupted update by hand again (same as entry (33)), then deployed and
+launched the actual fixed exe locally (not via self-update - manually,
+since there was nothing to self-update *from* a fixed process to yet).
+This very doc commit is what creates that "something newer to update to"
+for the next real test - once it's built and published, the *now-running,
+already-fixed* exe should be tested updating to it, which is the first
+attempt that actually exercises `CREATE_BREAKAWAY_FROM_JOB` from a process
+that has it. **Still not verified working** - this entry documents why the
+previous attempt was inconclusive, not that the fix is confirmed.
+
 ### 2026-09-09 (33) — First live self-update test: download worked, relaunch didn't
 
 User ran the actual "Download and install now" button (entry (26)) for the
