@@ -23,6 +23,15 @@ INFO = "#58a6ff"
 
 SEVERITY_COLOUR = {"high": BAD, "medium": WARN, "low": TEXT_DIM, "info": INFO}
 
+# Per-resource colours for the settings table's Impact column - deliberately
+# distinct from OK/WARN/BAD/ACCENT/INFO above (those carry a "good/caution/
+# bad" meaning elsewhere; these three just distinguish which hardware
+# resource a setting trades against, with no judgement attached).
+GPU_COLOUR = "#3fd0c9"   # teal
+CPU_COLOUR = "#ff6ec7"   # pink/magenta
+VRAM_COLOUR = "#b388ff"  # purple
+RESOURCE_COLOUR = {"gpu": GPU_COLOUR, "cpu": CPU_COLOUR, "vram": VRAM_COLOUR}
+
 MONO = "Consolas, 'Cascadia Mono', 'DejaVu Sans Mono', monospace"
 
 STYLESHEET = f"""

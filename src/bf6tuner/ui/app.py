@@ -96,6 +96,36 @@ def dim(text: str) -> QLabel:
     return label
 
 
+# Same threshold per resource everywhere a setting's impact is shown (the
+# Impact column and the detail pane below it) so the two never disagree.
+# VRAM's threshold is higher than GPU/CPU's because a lot of settings carry
+# a residual vram: 1 that isn't worth calling out on its own.
+_IMPACT_THRESHOLD = {"gpu": 1, "cpu": 1, "vram": 2}
+_IMPACT_ORDER = ("gpu", "cpu", "vram")
+
+
+def _cost_label(val: int) -> str:
+    if val >= 5:
+        return "very high"
+    if val >= 3:
+        return "high"
+    if val >= 2:
+        return "medium"
+    if val >= 1:
+        return "low"
+    return "none"
+
+
+def _impact_breakdown(setting: dict) -> list[tuple[str, int]]:
+    """[(resource, cost), ...] for resources this setting meaningfully costs."""
+    impact = setting.get("impact", {})
+    return [
+        (resource, impact.get(resource, 0))
+        for resource in _IMPACT_ORDER
+        if impact.get(resource, 0) >= _IMPACT_THRESHOLD[resource]
+    ]
+
+
 class _NoScrollComboBox(QComboBox):
     """Drop-in QComboBox that ignores wheel events unless it has keyboard focus.
 
@@ -721,7 +751,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.comparison_area, "Current vs recommended")
 
         self.settings_table = self._make_table(
-            ["Setting", "Value", "", "Why"], [250, 200, 155, -1]
+            ["Setting", "Value", "Impact", "", "Why"], [250, 200, 90, 155, -1]
         )
         # Tab-root widgets are all stored (not just passed straight to
         # addTab) so setTabText/setCurrentIndex calls elsewhere can look
@@ -1044,6 +1074,20 @@ class MainWindow(QMainWindow):
         self.override_note = dim(self._settings_note_default)
         row.addWidget(self.override_note, 1)
 
+        impact_legend = QLabel(
+            "Impact:&nbsp;"
+            f"<span style='color:{theme.GPU_COLOUR}; font-weight:600'>GPU</span>&nbsp;&nbsp;"
+            f"<span style='color:{theme.CPU_COLOUR}; font-weight:600'>CPU</span>&nbsp;&nbsp;"
+            f"<span style='color:{theme.VRAM_COLOUR}; font-weight:600'>VRAM</span>"
+        )
+        impact_legend.setObjectName("Dim")
+        impact_legend.setToolTip(
+            "Each row's Impact column is tagged with the resource(s) it meaningfully "
+            "costs, colour-matched to this legend - a quick way to spot which settings "
+            "are worth lowering first on a CPU-limited or GPU-limited machine."
+        )
+        row.addWidget(impact_legend)
+
         self.reset_overrides_button = QPushButton("Reset all to recommended")
         self.reset_overrides_button.clicked.connect(self.reset_all_overrides)
         row.addWidget(self.reset_overrides_button)
@@ -1216,7 +1260,7 @@ class MainWindow(QMainWindow):
 
             for row, (kind, key) in enumerate(row_kind):
                 if kind == "header":
-                    self._make_header_row(table, row, span=4)
+                    self._make_header_row(table, row, span=5)
                     continue
 
                 choice = next(c for c in rec.settings if c.setting_id == key)
@@ -1232,6 +1276,12 @@ class MainWindow(QMainWindow):
                 else:
                     table.setItem(row, 1, QTableWidgetItem(""))
 
+                impact_label = QLabel(self._impact_badges_html(setting))
+                impact_label.setTextFormat(Qt.RichText)
+                impact_label.setToolTip(self._impact_tooltip(setting))
+                impact_label.setAlignment(Qt.AlignCenter)
+                table.setCellWidget(row, 2, impact_label)
+
                 if editor is not None:
                     reset = QPushButton("Reset")
                     reset.setObjectName("TableButton")
@@ -1239,9 +1289,9 @@ class MainWindow(QMainWindow):
                     reset.clicked.connect(
                         lambda _=False, sid=choice.setting_id: self.reset_override(sid)
                     )
-                    table.setCellWidget(row, 2, reset)
+                    table.setCellWidget(row, 3, reset)
 
-                table.setItem(row, 3, QTableWidgetItem(""))
+                table.setItem(row, 4, QTableWidgetItem(""))
 
         choice_by_id = {c.setting_id: c for c in rec.settings}
 
@@ -1310,7 +1360,7 @@ class MainWindow(QMainWindow):
                     cell.setText("leave as-is" if choice.value == "keep" else choice.display)
                     cell.setForeground(Qt.gray)
 
-            reset_button = table.cellWidget(row, 2)
+            reset_button = table.cellWidget(row, 3)
             if isinstance(reset_button, QPushButton):
                 reset_button.setEnabled(choice.overridden)
                 if choice.overridden and choice.recommended_display:
@@ -1322,7 +1372,7 @@ class MainWindow(QMainWindow):
                     reset_button.setText("Reset")
                     reset_button.setToolTip("Already matches the recommendation")
 
-            why = table.item(row, 3)
+            why = table.item(row, 4)
             if why is not None:
                 if choice.overridden and choice.recommended_display:
                     why_text = f"was: {choice.recommended_display}    {choice.reason}"
@@ -1953,6 +2003,30 @@ class MainWindow(QMainWindow):
         setting = self.db.setting(choice.setting_id)
         self._update_setting_detail(choice, setting)
 
+    @staticmethod
+    def _impact_badges_html(setting: dict) -> str:
+        """Small coloured tags for the settings table's Impact column - one
+        per hardware resource this setting meaningfully costs, so a glance
+        down the column shows which rows are GPU-heavy, CPU-heavy, or eating
+        VRAM without opening the detail pane for each one."""
+        breakdown = _impact_breakdown(setting)
+        if not breakdown:
+            return ""
+        return "&nbsp;".join(
+            f"<span style='color:{theme.RESOURCE_COLOUR[resource]}; font-weight:600;"
+            f" font-size:10px'>{resource.upper()}</span>"
+            for resource, _cost in breakdown
+        )
+
+    @staticmethod
+    def _impact_tooltip(setting: dict) -> str:
+        breakdown = _impact_breakdown(setting)
+        if not breakdown:
+            return "No meaningful GPU, CPU, or VRAM cost."
+        return "Performance impact — " + " · ".join(
+            f"{resource.upper()}: {_cost_label(cost)}" for resource, cost in breakdown
+        )
+
     def _update_setting_detail(
         self, choice: "SettingChoice", setting: dict | None
     ) -> None:
@@ -1964,17 +2038,6 @@ class MainWindow(QMainWindow):
         note = setting.get("note", "")
         menu = setting.get("menu", "").replace(" > ", " › ")
         tradeoff = setting.get("tradeoff", {})
-        impact = setting.get("impact", {})
-        gpu_cost = impact.get("gpu", 0)
-        cpu_cost = impact.get("cpu", 0)
-        vram_cost = impact.get("vram", 0)
-
-        def _cost_label(val: int) -> str:
-            if val >= 5: return "very high"
-            if val >= 3: return "high"
-            if val >= 2: return "medium"
-            if val >= 1: return "low"
-            return "none"
 
         parts: list[str] = []
         parts.append(
@@ -1991,13 +2054,11 @@ class MainWindow(QMainWindow):
                 "point.</span>"
             )
 
-        cost_bits = []
-        if gpu_cost >= 1:
-            cost_bits.append(f"GPU: {_cost_label(gpu_cost)}")
-        if cpu_cost >= 1:
-            cost_bits.append(f"CPU: {_cost_label(cpu_cost)}")
-        if vram_cost >= 2:
-            cost_bits.append(f"VRAM: {_cost_label(vram_cost)}")
+        cost_bits = [
+            f"<span style='color:{theme.RESOURCE_COLOUR[resource]}'>"
+            f"{resource.upper()}</span>: {_cost_label(cost)}"
+            for resource, cost in _impact_breakdown(setting)
+        ]
         if cost_bits:
             parts.append(
                 f"<br><span style='color:{theme.TEXT_DIM}; font-size:11px'>"
