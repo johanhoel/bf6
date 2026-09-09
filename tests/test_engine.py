@@ -10,7 +10,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from bf6tuner import database, writer  # noqa: E402
-from bf6tuner.engine import Target, match_cpu, match_gpu, recommend  # noqa: E402
+from bf6tuner.engine import PRESETS, Target, match_cpu, match_gpu, recommend  # noqa: E402
 from bf6tuner.hardware import HardwareProfile, MemoryStick  # noqa: E402
 
 
@@ -538,6 +538,64 @@ def test_fps_overlay_offset_lines_absent_when_overlay_is_off(db):
     rec = recommend(db, make_profile(), Target(preset="competitive", show_fps_overlay=False))
     assert "PerfOverlay.FpsDisplayOffsetX" not in cfg_keys(rec)
     assert "PerfOverlay.FpsDisplayOffsetY" not in cfg_keys(rec)
+
+
+# -- background/menu frame rate limiter family (CPU/GPU/thermal saving) -----
+# GstRender.FrameRateLimiter{TabbedOut,Menu}Enable and their paired
+# FrameRateLimit{TabbedOut,Menu} values are confirmed real keys (see a real
+# profile in examples/PROFSAVEbf6mp_profile). They only ever apply while
+# tabbed out or in a menu, so this app recommends them on unconditionally -
+# there is no preset for which running the GPU flat out in the background
+# makes sense.
+
+@pytest.mark.parametrize("preset", PRESETS)
+def test_background_frame_limiter_is_always_on(db, preset):
+    rec = recommend(db, make_profile(), Target(preset=preset))
+    enable = next(s for s in rec.settings if s.setting_id == "background_frame_limiter_enable")
+    limit = next(s for s in rec.settings if s.setting_id == "background_frame_limit")
+    assert enable.value == 1
+    assert limit.value == 15
+    assert enable.profsave_key == "GstRender.FrameRateLimiterTabbedOutEnable"
+    assert limit.profsave_key == "GstRender.FrameRateLimitTabbedOut"
+
+
+@pytest.mark.parametrize("preset", PRESETS)
+def test_menu_frame_limiter_is_always_on(db, preset):
+    rec = recommend(db, make_profile(), Target(preset=preset))
+    enable = next(s for s in rec.settings if s.setting_id == "menu_frame_limiter_enable")
+    limit = next(s for s in rec.settings if s.setting_id == "menu_frame_limit")
+    assert enable.value == 1
+    assert limit.value == 60
+    assert enable.profsave_key == "GstRender.FrameRateLimiterMenuEnable"
+    assert limit.profsave_key == "GstRender.FrameRateLimitMenu"
+
+
+def test_main_frame_limiter_enable_is_confirmed_key_and_always_on(db):
+    rec = recommend(db, make_profile(), Target(preset="quality"))
+    enable = next(s for s in rec.settings if s.setting_id == "main_frame_limiter_enable")
+    assert enable.value == 1
+    assert enable.profsave_key == "GstRender.FrameRateLimiterEnable"
+
+
+def test_undergrowth_quality_is_distinct_from_vegetation_quality(db):
+    """A real profile confirms GstRender.UndergrowthQuality and
+    GstRender.VegetationQuality are two separate keys, not the same slider
+    surfaced twice."""
+    rec = recommend(db, make_profile(), Target(preset="balanced"))
+    undergrowth = next(s for s in rec.settings if s.setting_id == "undergrowth_quality")
+    vegetation = next(s for s in rec.settings if s.setting_id == "vegetation_quality")
+    assert undergrowth.profsave_key == "GstRender.UndergrowthQuality"
+    assert vegetation.profsave_key == "GstRender.VegetationQuality"
+    assert undergrowth.profsave_key != vegetation.profsave_key
+
+
+def test_significance_quality_has_confirmed_profsave_key(db):
+    """GstRender.SignificanceQuality is confirmed to exist from a real
+    profile; it is one of the largest CPU-saving levers available for
+    low-spec hardware that has no spare threads for Thread.* overrides."""
+    rec = recommend(db, make_profile(), Target(preset="balanced"))
+    setting = next(s for s in rec.settings if s.setting_id == "significance_quality")
+    assert setting.profsave_key == "GstRender.SignificanceQuality"
 
 
 def test_cfg_override_matching_the_recommendation_is_not_flagged(db):

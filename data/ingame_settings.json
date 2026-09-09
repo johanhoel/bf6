@@ -939,7 +939,7 @@
     },
     {
       "id": "vegetation_quality",
-      "label": "Undergrowth / Vegetation Quality",
+      "label": "Vegetation Quality",
       "menu": "Video > Advanced",
       "profsave_key": "GstRender.VegetationQuality",
       "type": "enum",
@@ -972,7 +972,7 @@
         "cpu": 2,
         "vram": 1
       },
-      "note": "Expensive on vegetated maps, and lower settings thin out the grass that players hide in. Competitive players deliberately run this low. Be aware that this is the setting most likely to be flagged as an unfair advantage in an organised match — check your league's rules.",
+      "note": "Expensive on vegetated maps, and lower settings thin out the grass that players hide in. Competitive players deliberately run this low. Be aware that this is the setting most likely to be flagged as an unfair advantage in an organised match — check your league's rules. Undergrowth Quality is a separate setting (GstRender.UndergrowthQuality, not this key) — confirmed as genuinely distinct from a real BF6 profile, not the same slider under two names.",
       "cost": {
         "0": {
           "gpu": -9.0,
@@ -1008,6 +1008,385 @@
           ],
           "cons": [
             "Expensive, and it gives enemies more cover against you too"
+          ]
+        }
+      }
+    },
+    {
+      "id": "undergrowth_quality",
+      "label": "Undergrowth Quality",
+      "menu": "Video > Advanced",
+      "confidence": "community",
+      "profsave_key": "GstRender.UndergrowthQuality",
+      "type": "enum",
+      "options": [
+        {
+          "value": 0,
+          "label": "Low"
+        },
+        {
+          "value": 1,
+          "label": "Medium"
+        },
+        {
+          "value": 2,
+          "label": "High"
+        },
+        {
+          "value": 3,
+          "label": "Ultra"
+        }
+      ],
+      "presets": {
+        "esports": 0,
+        "competitive": 0,
+        "balanced": 1,
+        "quality": 3
+      },
+      "impact": {
+        "gpu": 3,
+        "cpu": 1,
+        "vram": 1
+      },
+      "note": "Ground-level undergrowth (grass, small plants, ground clutter) as its own setting, separate from Vegetation Quality (bushes/trees) - confirmed as a genuinely distinct key from a real BF6 profile, not the same slider under two names. Same competitive-visibility concern as Vegetation Quality: dense ground cover hides prone players. Exact per-level difference is not independently documented beyond the confirmed enum range.",
+      "cost": {
+        "0": {
+          "gpu": -6.0,
+          "cpu": -1.5
+        },
+        "1": {
+          "gpu": -3.0,
+          "cpu": -0.7
+        },
+        "2": {
+          "gpu": 0,
+          "cpu": 0
+        },
+        "3": {
+          "gpu": 5.0,
+          "cpu": 1.0
+        }
+      },
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "GPU saving on vegetated maps",
+            "Thins the ground cover prone players hide in"
+          ],
+          "cons": [
+            "Barer-looking ground detail",
+            "Same competitive-fairness question as Vegetation Quality - check your league's rules"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Denser, more natural ground cover"
+          ],
+          "cons": [
+            "Costs GPU frame time for something rarely focused on directly"
+          ]
+        }
+      }
+    },
+    {
+      "id": "significance_quality",
+      "label": "Significance Quality",
+      "menu": "Video > Advanced",
+      "confidence": "community",
+      "profsave_key": "GstRender.SignificanceQuality",
+      "type": "enum",
+      "options": [
+        {
+          "value": 0,
+          "label": "Low"
+        },
+        {
+          "value": 1,
+          "label": "Medium"
+        },
+        {
+          "value": 2,
+          "label": "High"
+        },
+        {
+          "value": 3,
+          "label": "Ultra"
+        }
+      ],
+      "presets": {
+        "esports": 0,
+        "competitive": 1,
+        "balanced": 2,
+        "quality": 3
+      },
+      "impact": {
+        "gpu": 1,
+        "cpu": 4,
+        "vram": 0
+      },
+      "note": "Frostbite's 'significance' system decides how much simulation and animation detail distant or unimportant entities (other players, vehicles, ragdolls) get each frame, versus a cheaper approximation - a CPU cost, not a rendering one, and one of the most direct CPU-saving levers available on a low-spec machine, since it does not depend on having spare threads to hand out the way Thread.* overrides do. Confirmed as a real, working key from a real BF6 profile; the precise simulation detail each tier trades off is not independently documented beyond that.",
+      "cost": {
+        "0": {
+          "gpu": -0.5,
+          "cpu": -7.0
+        },
+        "1": {
+          "gpu": -0.2,
+          "cpu": -3.5
+        },
+        "2": {
+          "gpu": 0,
+          "cpu": 0
+        },
+        "3": {
+          "gpu": 0.5,
+          "cpu": 4.5
+        }
+      },
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "One of the largest CPU savings available, especially useful on a CPU without spare threads for Thread.* overrides",
+            "Helps 1% lows in crowded fights with many players/vehicles on screen"
+          ],
+          "cons": [
+            "Distant players/vehicles may animate or react less precisely"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Full simulation detail on every entity regardless of distance or importance"
+          ],
+          "cons": [
+            "A real CPU cost that scales with how many players/vehicles are in view - worst in big-map, high-player-count modes"
+          ]
+        }
+      }
+    },
+    {
+      "id": "background_frame_limiter_enable",
+      "label": "Limit Frame Rate When Tabbed Out",
+      "menu": "Video > Basic",
+      "confidence": "community",
+      "profsave_key": "GstRender.FrameRateLimiterTabbedOutEnable",
+      "type": "bool",
+      "presets": {
+        "esports": 1,
+        "competitive": 1,
+        "balanced": 1,
+        "quality": 1
+      },
+      "always": 1,
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Confirmed real key (GstRender.FrameRateLimiterTabbedOutEnable) from a real BF6 profile. Turns on a separate, much lower FPS cap while the game window is not focused (alt-tabbed to a browser, Discord, etc). Zero downside during actual play - it only ever applies while you're not in the game - and it is one of the easiest CPU/GPU/thermal savings available on a low-spec machine, since BF6 otherwise keeps rendering at full tilt in the background.",
+      "cost": {
+        "0": {
+          "gpu": 0,
+          "cpu": 0
+        },
+        "1": {
+          "gpu": 0,
+          "cpu": 0
+        }
+      },
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "Full frame rate even while tabbed out"
+          ],
+          "cons": [
+            "Wastes CPU/GPU time and generates heat and fan noise for a window you aren't looking at"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Frees up CPU/GPU headroom and cuts heat/noise the instant you tab out",
+            "Never affects performance while you're actually playing"
+          ],
+          "cons": []
+        }
+      }
+    },
+    {
+      "id": "background_frame_limit",
+      "label": "Tabbed-Out Frame Rate Limit",
+      "menu": "Video > Basic",
+      "confidence": "community",
+      "profsave_key": "GstRender.FrameRateLimitTabbedOut",
+      "type": "slider",
+      "min": 5,
+      "max": 60,
+      "unit": "fps",
+      "presets": {
+        "esports": 15,
+        "competitive": 15,
+        "balanced": 15,
+        "quality": 15
+      },
+      "always": 15,
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Confirmed real key (GstRender.FrameRateLimitTabbedOut) - the cap applied while tabbed out, once Limit Frame Rate When Tabbed Out is on. 15 FPS matches the value seen in a real BF6 profile and is enough to keep the window alive and responsive without burning a full frame budget on a window you're not looking at. Only takes effect while tabbed out, so it costs nothing during real play.",
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "Maximum CPU/GPU/thermal saving while tabbed out"
+          ],
+          "cons": [
+            "Choppier if you keep half an eye on the game window while alt-tabbed"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Smoother if you're watching the game window while doing something else"
+          ],
+          "cons": [
+            "Gives back some of the CPU/GPU saving this setting exists for"
+          ]
+        }
+      }
+    },
+    {
+      "id": "menu_frame_limiter_enable",
+      "label": "Limit Frame Rate In Menus",
+      "menu": "Video > Basic",
+      "confidence": "community",
+      "profsave_key": "GstRender.FrameRateLimiterMenuEnable",
+      "type": "bool",
+      "presets": {
+        "esports": 1,
+        "competitive": 1,
+        "balanced": 1,
+        "quality": 1
+      },
+      "always": 1,
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Confirmed real key (GstRender.FrameRateLimiterMenuEnable) from a real BF6 profile. Caps the frame rate on menu/loadout/deploy screens, which have no gameplay reason to run uncapped and otherwise spin the GPU up for a static screen. Never applies once you're actually in a match.",
+      "cost": {
+        "0": {
+          "gpu": 0,
+          "cpu": 0
+        },
+        "1": {
+          "gpu": 0,
+          "cpu": 0
+        }
+      },
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "Uncapped, ultra-smooth menu screens"
+          ],
+          "cons": [
+            "Runs the GPU flat out, generating heat and noise, for a static loadout screen"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Cuts GPU load and heat/noise in menus with no effect on in-match performance"
+          ],
+          "cons": []
+        }
+      }
+    },
+    {
+      "id": "menu_frame_limit",
+      "label": "Menu Frame Rate Limit",
+      "menu": "Video > Basic",
+      "confidence": "community",
+      "profsave_key": "GstRender.FrameRateLimitMenu",
+      "type": "slider",
+      "min": 30,
+      "max": 240,
+      "unit": "fps",
+      "presets": {
+        "esports": 60,
+        "competitive": 60,
+        "balanced": 60,
+        "quality": 60
+      },
+      "always": 60,
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Confirmed real key (GstRender.FrameRateLimitMenu). 60 FPS is a smooth, low-effort default for menu screens - the exact number has no documented 'correct' value since it never affects in-match performance either way, only how hard the GPU works while you're browsing loadouts.",
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "Even less GPU load/heat while in menus"
+          ],
+          "cons": [
+            "Visibly less smooth menu navigation"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Smoother menu navigation"
+          ],
+          "cons": [
+            "Gives back GPU headroom/thermal saving for a screen with no gameplay stakes"
+          ]
+        }
+      }
+    },
+    {
+      "id": "main_frame_limiter_enable",
+      "label": "In-Match Frame Rate Limiter",
+      "menu": "Video > Basic",
+      "confidence": "community",
+      "profsave_key": "GstRender.FrameRateLimiterEnable",
+      "type": "bool",
+      "presets": {
+        "esports": 1,
+        "competitive": 1,
+        "balanced": 1,
+        "quality": 1
+      },
+      "always": 1,
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Confirmed real key (GstRender.FrameRateLimiterEnable) - the master switch that the Frame Rate Limit slider needs in order to actually cap anything. This app always recommends holding a cap (see Frame Rate Limit: flatter frame times, a held VRR window, lower GPU power draw), so this is on in every preset.",
+      "cost": {
+        "0": {
+          "gpu": 0,
+          "cpu": 0
+        },
+        "1": {
+          "gpu": 0,
+          "cpu": 0
+        }
+      },
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "Uncapped average frame rate"
+          ],
+          "cons": [
+            "Frame Rate Limit has no effect while this is off"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Frame Rate Limit actually takes effect - flatter frame times, VRR window held, lower GPU power draw"
+          ],
+          "cons": [
+            "Gives up peak frame rate you might otherwise see"
           ]
         }
       }

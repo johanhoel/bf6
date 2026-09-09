@@ -366,6 +366,57 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-09 (44) — CPU-saving settings for low-spec hardware: Significance Quality, Undergrowth Quality, and the frame-rate-limiter family
+
+User asked to dig into `User.cfg`/in-game CPU-saving coverage specifically
+for low-spec computers. Reviewed `_thread_policy()` first and confirmed it's
+correctly, deliberately excluding CPUs under 8c/16t from `Thread.*`
+overrides (hybrid-part E-core parking cost, entry protected by design) - the
+right lever for a weak CPU is expanding *in-game* CPU-cost settings
+coverage instead, not touching that gate.
+
+Cross-referenced `examples/PROFSAVEbf6mp_profile` against the DB again and
+added 7 new settings, all confirmed real keys:
+
+- **`significance_quality`** (`GstRender.SignificanceQuality`) - Frostbite's
+  distant/unimportant-entity simulation-detail system. This is a genuine
+  CPU cost, not a GPU one, and is one of the largest CPU-saving levers
+  available on a machine with no spare threads to hand `Thread.*` overrides
+  to. `confidence: community` - the key and that it works are confirmed,
+  the exact per-tier simulation detail traded off is not independently
+  documented.
+- **`undergrowth_quality`** (`GstRender.UndergrowthQuality`) - confirmed as
+  a real key genuinely separate from `GstRender.VegetationQuality`, not the
+  same slider under two names. Also fixed `vegetation_quality`'s label
+  ("Undergrowth / Vegetation Quality") which incorrectly implied the two
+  were combined, and added a note pointing at the real distinction.
+- **The background/menu frame-rate-limiter family**:
+  `FrameRateLimiterTabbedOutEnable`/`FrameRateLimitTabbedOut` and
+  `FrameRateLimiterMenuEnable`/`FrameRateLimitMenu`, plus
+  `FrameRateLimiterEnable` (the master switch the existing `frame_limit`
+  setting needs to actually take effect, which was missing from the DB
+  entirely). All five recommended **on unconditionally, in every preset** -
+  they only ever throttle the game while tabbed out or sitting in a menu,
+  never during a match, so there's no preset for which running the GPU flat
+  out in the background makes sense. Tabbed-out cap set to 15 FPS and menu
+  cap to 60 FPS, matching real values seen in the example profile (the user's
+  own profile had all three `*Enable` flags off - their personal choice on a
+  high-end system, not a recommendation to copy for low-spec hardware).
+- Structural note: the schema is strictly one setting = one `profsave_key`,
+  so the two enable/value pairs are exposed as four separate settings
+  rather than one composite widget, matching every other setting in the DB.
+- New tests cover all 7 settings: the limiter family's value is pinned
+  across all four presets (parametrized over `PRESETS`), and undergrowth/
+  significance quality assert their confirmed `profsave_key`s directly
+  (undergrowth's test also re-confirms it differs from vegetation's key).
+  All 226 tests pass (215 + 11 new). `ingame_settings.json` now has 46
+  settings, not 39.
+- **Not done, out of scope for this round**: the ~80 remaining `GstRender.*`
+  keys from the example profile that are GPU-quality/HUD/UI-scale/subtitle
+  settings rather than CPU-performance-critical ones. `DRSFrameRateTarget`
+  (dynamic-resolution-scaling target) was seen alongside the limiter family
+  but is a GPU-side concern, not CPU, and was left for a future round.
+
 ### 2026-09-09 (43) — Added the confirmed-real `PerfOverlay.*` commands from entry (31)
 
 The remaining piece of entry (31)'s flagged-but-deferred inventory:

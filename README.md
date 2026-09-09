@@ -64,7 +64,7 @@ reset individually or all at once.
 Both tables group their rows by category (Video &gt; Basic/Advanced/Ray Tracing,
 Controls, Audio for settings; CPU Threading, Render Pipeline, Frame Pacing and so
 on for `User.cfg`), with a search box, a jump-to-category dropdown, and
-expand/collapse-all — the settings list alone is 39 rows and only getting longer.
+expand/collapse-all — the settings list alone is 46 rows and only getting longer.
 
 **Compares** — reads your *current* settings out of `PROFSAVE_profile` and your
 existing `User.cfg`, then shows every single change side by side with what it
@@ -310,7 +310,7 @@ Five JSON datasets under `data/`, bundled as plain files at build time (see
 | `gpu_db.json` | 78 GPUs — VRAM, relative BF6 performance index, DLSS/FSR/XeSS support, frame-generation capability, ray tracing strength |
 | `cpu_db.json` | 60 CPUs — core/thread counts, hybrid topology, X3D and chiplet layout, estimated CPU-limited FPS, plus a fallback heuristic for anything not listed |
 | `cfg_commands.json` | 45 `User.cfg` commands, each with a **confidence level** (`documented` / `community` / `legacy`), a **risk level**, a hardware policy, an explanation, and pros/cons for the ones actually emitted |
-| `ingame_settings.json` | 39 in-game settings with per-preset values, VRAM gates, a per-option **cost curve** in percent of frame time, and **directional pros and cons** for raising or lowering each one. 7 are marked `confidence: unverified` — sharpening, view/LOD distance, reflection quality, and weapon FOV are plausible additions never sourced from a confirmed profile; display mode, texture filtering, and camera shake were found missing the same flag in an audit and brought in line. None of the 7 carry a profile key, so none are ever written automatically |
+| `ingame_settings.json` | 46 in-game settings with per-preset values, VRAM gates, a per-option **cost curve** in percent of frame time, and **directional pros and cons** for raising or lowering each one. 7 are marked `confidence: unverified` — sharpening, view/LOD distance, reflection quality, and weapon FOV are plausible additions never sourced from a confirmed profile; display mode, texture filtering, and camera shake were found missing the same flag in an audit and brought in line. None of the 7 carry a profile key, so none are ever written automatically. 7 more are new CPU/GPU/thermal-saving additions confirmed from a real profile: Undergrowth Quality (a real key genuinely separate from Vegetation Quality), Significance Quality (one of the largest CPU levers available, especially for CPUs with no spare threads for `Thread.*` overrides), and the background/menu frame-rate-limiter family, recommended on unconditionally since it only ever throttles the game while tabbed out or in a menu |
 | `system_tweaks.json` | 14 OS/BIOS/driver checks with trigger conditions |
 | `keybind_concepts.json` | Key-binding decode data — see "Key bindings" below |
 
@@ -363,7 +363,7 @@ only thing that needs changing.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests -q          # 215 tests
+python -m pytest tests -q          # 226 tests
 PYTHONPATH=src python -m bf6tuner --preset competitive   # CLI, runs on Linux too
 ```
 
