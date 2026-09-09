@@ -211,7 +211,12 @@ Two ways to actually get the update from that dialog:
 - **Download and install now** — downloads the new build from GitHub's rolling
   `latest` release, replaces this exe, and relaunches automatically. Only shown
   for the compiled `.exe` (a source checkout has nothing for this to replace —
-  use `git pull` / `UPDATE.bat` instead).
+  use `git pull` / `UPDATE.bat` instead). The download/swap/relaunch itself is
+  reliable, but the relaunch goes through Windows' ShellExecute, which Smart
+  App Control/SmartScreen can still block outright for the freshly-built,
+  unsigned, never-before-seen file hash — this app tells you so and what to do
+  next (open the exe by hand and choose "Run anyway", or use
+  `run-from-source.bat`) rather than leaving you guessing why nothing reopened.
 - **Open GitHub Actions build →** — the original path, always available: opens
   the Actions run that has the built executables attached, same as before.
 - **Skip this version** — stops the sidebar banner and startup status message
