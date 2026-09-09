@@ -317,9 +317,11 @@ class MainWindow(QMainWindow):
     def _focus_search(self) -> None:
         """Jumps to whichever tab's search box is relevant right now."""
         index = self.tabs.currentIndex()
-        target = self.settings_search if index == 1 else self.cfg_search if index == 2 else None
+        settings_index = self.tabs.indexOf(self._settings_tab_widget)
+        cfg_index = self.tabs.indexOf(self._cfg_tab_widget)
+        target = self.settings_search if index == settings_index else self.cfg_search if index == cfg_index else None
         if target is None:
-            self.tabs.setCurrentIndex(1)
+            self.tabs.setCurrentIndex(settings_index)
             target = self.settings_search
         target.setFocus()
         target.selectAll()
@@ -721,12 +723,22 @@ class MainWindow(QMainWindow):
         self.settings_table = self._make_table(
             ["Setting", "Value", "", "Why"], [250, 200, 155, -1]
         )
-        self.tabs.addTab(self._build_settings_tab(), "In-game settings")
+        # Tab-root widgets are all stored (not just passed straight to
+        # addTab) so setTabText/setCurrentIndex calls elsewhere can look
+        # up "whichever index this tab is at right now" via
+        # self.tabs.indexOf(...) instead of a hardcoded position - a
+        # hardcoded index silently points at the wrong tab the next time
+        # a tab gets inserted or reordered (this happened for real: adding
+        # the Key Bindings tab below silently relabelled it "Benchmark"
+        # until this was fixed).
+        self._settings_tab_widget = self._build_settings_tab()
+        self.tabs.addTab(self._settings_tab_widget, "In-game settings")
 
         self.cfg_table = self._make_table(
             ["Command", "Value", "", "Why"], [260, 160, 155, -1]
         )
-        self.tabs.addTab(self._build_cfg_tab(), "User.cfg")
+        self._cfg_tab_widget = self._build_cfg_tab()
+        self.tabs.addTab(self._cfg_tab_widget, "User.cfg")
 
         self.warnings_area = self._make_scroll()
         self.tabs.addTab(self.warnings_area, "Warnings")
@@ -737,7 +749,8 @@ class MainWindow(QMainWindow):
         self.keybinds_area = self._make_scroll()
         self.tabs.addTab(self.keybinds_area, "Key Bindings")
 
-        self.tabs.addTab(self._build_benchmark_tab(), "Benchmark")
+        self._benchmark_tab_widget = self._build_benchmark_tab()
+        self.tabs.addTab(self._benchmark_tab_widget, "Benchmark")
         self._fill_benchmark_results()
 
         layout.addWidget(self.tabs, 1)
@@ -921,7 +934,10 @@ class MainWindow(QMainWindow):
         layout.addStretch(1)
 
         count = len(recordings)
-        self.tabs.setTabText(5, f"Benchmark ({count})" if count else "Benchmark")
+        self.tabs.setTabText(
+            self.tabs.indexOf(self._benchmark_tab_widget),
+            f"Benchmark ({count})" if count else "Benchmark",
+        )
 
     def _benchmark_card(self, path: Path, recording: benchmark.Recording) -> QWidget:
         frame, inner = card("")
@@ -1319,8 +1335,10 @@ class MainWindow(QMainWindow):
 
         count = len(rec.overrides)
         self.reset_overrides_button.setEnabled(bool(count))
-        self.tabs.setTabText(1, f"In-game settings ({count} changed)" if count
-                             else "In-game settings")
+        self.tabs.setTabText(
+            self.tabs.indexOf(self._settings_tab_widget),
+            f"In-game settings ({count} changed)" if count else "In-game settings",
+        )
         self._update_settings_header_texts()
         self._apply_settings_filter()
 
@@ -1701,7 +1719,10 @@ class MainWindow(QMainWindow):
 
         count = len(rec.cfg_overrides)
         self.reset_cfg_overrides_button.setEnabled(bool(count))
-        self.tabs.setTabText(2, f"User.cfg ({count} changed)" if count else "User.cfg")
+        self.tabs.setTabText(
+            self.tabs.indexOf(self._cfg_tab_widget),
+            f"User.cfg ({count} changed)" if count else "User.cfg",
+        )
         self._update_cfg_header_texts()
         self._apply_cfg_filter()
 
@@ -1806,7 +1827,7 @@ class MainWindow(QMainWindow):
         self.cfg_jump.setCurrentIndex(0)
 
     def _goto_frame_limit(self) -> None:
-        self.tabs.setCurrentIndex(1)
+        self.tabs.setCurrentIndex(self.tabs.indexOf(self._settings_tab_widget))
         self._reveal_settings_row("frame_limit")
 
     def _on_cfg_editor_changed(self, key: str) -> None:
@@ -2555,10 +2576,12 @@ class MainWindow(QMainWindow):
         changed = 0 if comparison is None else (
             len(comparison.changes) + len([c for c in comparison.cfg_changes if c.action != "same"])
         )
-        self.tabs.setTabText(0, f"Current vs recommended ({changed})" if changed
-                             else "Current vs recommended")
-        self.tabs.setTabText(3, f"Warnings ({len(rec.warnings)})")
-        self.tabs.setTabText(4, f"System checks ({len(rec.tweaks)})")
+        self.tabs.setTabText(
+            self.tabs.indexOf(self.comparison_area),
+            f"Current vs recommended ({changed})" if changed else "Current vs recommended",
+        )
+        self.tabs.setTabText(self.tabs.indexOf(self.warnings_area), f"Warnings ({len(rec.warnings)})")
+        self.tabs.setTabText(self.tabs.indexOf(self.checks_area), f"System checks ({len(rec.tweaks)})")
 
         target_path = self.game.user_cfg or Path("(install folder not found)")
         cfg_mark = "  [set by hand]" if "install_dir" in self.game.overridden else ""
