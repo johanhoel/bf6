@@ -366,6 +366,43 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-09 (40) — Third self-update bug: PyInstaller's onefile parent-check
+
+Confirming retest of entry (39) hit a *new* failure: a real Windows error
+dialog, "Security validation failure: parent process has different
+executable!" - not a silent hang like the first two bugs, so this one was
+identifiable immediately rather than needing another isolating test.
+
+Real, documented cause: PyInstaller 6.22.1+'s onefile builds are always
+two OS processes - an outer bootloader stub and an inner re-exec'd child
+that does the actual work (`os.getpid()` from Python code only ever sees
+the *child*). That version added a security check where the child
+verifies its parent's exe path matches its own, specifically to block
+PID-reuse spoofing attacks. The wait loop here was only waiting for the
+child's PID (`os.getpid()`) to disappear - the bootloader *parent* is a
+different PID entirely, and racing its exit against the file swap could
+mean the parent hadn't quite finished tearing down when the relaunched
+instance's new child ran its parent-path check against an exe file that
+had already been replaced out from under it.
+
+Fixed by changing the wait condition from "this one specific PID" to
+"every process whose resolved image path matches this exe," which
+correctly covers both the bootloader parent and the child regardless of
+which PID belongs to which, plus a small added buffer after the process
+list looks empty (the same "don't trust the first success" margin as the
+move-retry loop already has). `os.getpid()`/`import os` both dropped -
+no longer needed.
+
+Verified the same way as before (own limit noted, same as always): the
+isolated Python-level test (`sys.frozen` monkeypatched, real `Popen`,
+fake exe files) still completes automatically - but that test uses a
+plain shell process standing in for `sys.executable`, not an actual
+PyInstaller onefile binary, so it structurally cannot reproduce or verify
+the specific bootloader-parent-vs-child behavior this bug and fix are
+about. Only a real live test against the actual frozen build can confirm
+this one. All 211 tests pass. Followed the standing build/release
+workflow.
+
 ### 2026-09-09 (39) — Self-update confirmed working live, end to end
 
 After entry (38)'s process fix (verify the running PID's actual start time
