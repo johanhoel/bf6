@@ -604,6 +604,15 @@ def _build_cfg(
         emit("PerfOverlay.DrawFps", 1, "On-screen FPS counter.")
         emit("PerfOverlay.DrawGraph", 1,
              "Frame time graph. Stutter is a frame time problem, not an average FPS problem.")
+        # Confirmed directly from real profiles at three resolutions (see
+        # cfg_commands.json's FpsDisplayOffsetX entry): the horizontal offset
+        # is always resolution width minus 195px, pinning the overlay to the
+        # top-right corner instead of a value tuned for one specific screen.
+        # The vertical offset does not vary with resolution in the data seen.
+        emit("PerfOverlay.FpsDisplayOffsetX", target.width - 195,
+             "Pins the overlay to the top-right corner at your resolution.")
+        emit("PerfOverlay.FpsDisplayOffsetY", -50,
+             "Same vertical position confirmed across every real profile seen.")
 
     return lines, warnings
 

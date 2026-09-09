@@ -523,6 +523,23 @@ def test_a_command_the_app_never_writes_cannot_be_forced_via_cfg_override(db):
     assert forced.cfg_overrides == {}
 
 
+@pytest.mark.parametrize("width", [3840, 2560, 1920])
+def test_fps_overlay_offset_x_matches_resolution_confirmed_from_real_profiles(db, width):
+    """Confirmed directly from real profiles at three resolutions (see
+    cfg_commands.json's FpsDisplayOffsetX note): width - 195px in every case,
+    pinning the overlay to the top-right corner rather than a value tuned
+    for one specific screen."""
+    rec = recommend(db, make_profile(), Target(preset="competitive", width=width, height=1080))
+    line = next(l for l in rec.cfg if l.key == "PerfOverlay.FpsDisplayOffsetX")
+    assert line.value == width - 195
+
+
+def test_fps_overlay_offset_lines_absent_when_overlay_is_off(db):
+    rec = recommend(db, make_profile(), Target(preset="competitive", show_fps_overlay=False))
+    assert "PerfOverlay.FpsDisplayOffsetX" not in cfg_keys(rec)
+    assert "PerfOverlay.FpsDisplayOffsetY" not in cfg_keys(rec)
+
+
 def test_cfg_override_matching_the_recommendation_is_not_flagged(db):
     auto = recommend(db, make_profile(), Target(preset="competitive"))
     same = next(l for l in auto.cfg if l.key == "RenderDevice.RenderAheadLimit").value

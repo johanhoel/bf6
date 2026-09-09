@@ -366,6 +366,41 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-09 (43) — Added the confirmed-real `PerfOverlay.*` commands from entry (31)
+
+The remaining piece of entry (31)'s flagged-but-deferred inventory:
+`examples/user.cfg`'s `perfoverlay.*` family. Cross-referenced against the
+DB first rather than assuming - only 7 of the 11 keys in that file were
+actually missing (`DrawFps`/`PostProcess.DofMethod`/both `WorldRender.*`
+keys were already present).
+
+- Added `PerfOverlay.DrawSim`, `DrawGpu`, `DrawPixelThroughput`,
+  `FpsDisplayFormat` as `confidence: community` - the key names and that
+  they work are confirmed from a real profile, but what each one actually
+  *displays* isn't independently documented, said plainly in each `detail`
+  rather than guessed.
+- Added `FpsDisplayOffsetX`/`FpsDisplayOffsetY` as `confidence: documented`
+  and **wired them into `engine.py`'s existing Telemetry block** (not just
+  a database entry) - the offset-X values in the example file at three
+  resolutions (3840->3645, 2560->2365, 1920->1725) are *exactly* width
+  minus 195px in every case, a real confirmed relationship, not a guess -
+  so the engine now computes `target.width - 195` for whatever resolution
+  is actually being recommended, rather than a value tuned for one person's
+  screen. Y offset (-50) doesn't vary with resolution in the data seen, so
+  it's a fixed constant.
+- Corrected two **stale** existing entries using the same example file:
+  `WorldRender.LightTileCsPathEnable`'s old guidance ("1 on any GPU newer
+  than 2014") is contradicted by a real BF6 profile explicitly setting it
+  to 0 with a "no longer works" annotation - updated to say so, since
+  recommending 1 would now be actively wrong. `PostProcess.DofMethod`
+  gained a caveat ("must be entered manually in each map," per the same
+  file's comment) rather than silently keeping a claim that might not
+  actually work as a `User.cfg` line.
+- New tests confirm the resolution-aware offset formula at three
+  resolutions, and that the two offset lines are absent when the FPS
+  overlay target is off (they're only meaningful alongside it). All 215
+  tests pass (211 + 4 new). `cfg_commands.json` now has 45 commands, not 39.
+
 ### 2026-09-09 (42) — Self-update saga closes: the last blocker isn't a code bug
 
 A retest of entry (41)'s fix hit a new failure: Smart App Control blocked

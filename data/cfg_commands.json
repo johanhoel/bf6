@@ -340,6 +340,93 @@
       ]
     },
     {
+      "key": "PerfOverlay.DrawSim",
+      "group": "overlay",
+      "type": "bool",
+      "confidence": "community",
+      "risk": "safe",
+      "summary": "Simulation (CPU game-logic) time overlay.",
+      "detail": "A separate line for how long the game's own simulation tick took, alongside the render frame time DrawGraph already shows - useful for telling a CPU-bound stutter (sim time spiking) apart from a GPU-bound one (render time spiking) rather than just seeing the total frame time move. Real key, confirmed present and working in a real BF6 profile; the exact breakdown of what counts as 'sim' is not independently documented.",
+      "hardware_policy": "always_available",
+      "pros": [
+        "Separates CPU simulation time from GPU render time, rather than one combined number",
+        "Costs nothing"
+      ],
+      "cons": [
+        "One more line of overlay text"
+      ]
+    },
+    {
+      "key": "PerfOverlay.DrawGpu",
+      "group": "overlay",
+      "type": "bool",
+      "confidence": "community",
+      "risk": "safe",
+      "summary": "GPU-side performance overlay line.",
+      "detail": "A GPU-specific stats line alongside the FPS counter. Real key, confirmed present and working in a real BF6 profile; the exact content of the line (utilisation vs. frame time vs. something else) is not independently documented.",
+      "hardware_policy": "always_available",
+      "pros": [
+        "GPU-specific detail beyond the single FPS number",
+        "Costs nothing"
+      ],
+      "cons": [
+        "One more line of overlay text"
+      ]
+    },
+    {
+      "key": "PerfOverlay.DrawPixelThroughput",
+      "group": "overlay",
+      "type": "bool",
+      "confidence": "community",
+      "risk": "safe",
+      "summary": "Pixel throughput / fill-rate overlay line.",
+      "detail": "Real key, confirmed present and working in a real BF6 profile; the exact metric shown is not independently documented. Only useful if you already suspect a fill-rate-bound scenario (heavy overdraw, high resolution scale) - most players will not need this on.",
+      "hardware_policy": "always_available",
+      "pros": [
+        "Surfaces a fill-rate metric the other overlay lines do not show"
+      ],
+      "cons": [
+        "One more line of overlay text",
+        "Only meaningful if you already suspect a fill-rate bottleneck"
+      ]
+    },
+    {
+      "key": "PerfOverlay.FpsDisplayFormat",
+      "group": "overlay",
+      "type": "int",
+      "min": 0,
+      "max": 3,
+      "confidence": "community",
+      "risk": "safe",
+      "summary": "Layout/verbosity of the performance overlay.",
+      "detail": "Real key, confirmed present and working in a real BF6 profile (seen set to 3, its apparent maximum). The exact difference between each numbered format is not independently documented - try a value and look at the overlay.",
+      "hardware_policy": "always_available"
+    },
+    {
+      "key": "PerfOverlay.FpsDisplayOffsetX",
+      "group": "overlay",
+      "type": "int",
+      "min": -8000,
+      "max": 8000,
+      "confidence": "documented",
+      "risk": "safe",
+      "summary": "Horizontal screen position of the performance overlay.",
+      "detail": "Positions the overlay a fixed distance from the left edge - in practice used to pin it to the right edge instead, since the offset needed scales with resolution. Confirmed directly from real values at three resolutions (3840x2160 -> 3645, 2560x1440 -> 2365, 1920x1080 -> 1725): every one is exactly resolution width minus 195px, so this app computes it the same way for your actual target resolution rather than a value tuned for someone else's screen.",
+      "hardware_policy": "always_available"
+    },
+    {
+      "key": "PerfOverlay.FpsDisplayOffsetY",
+      "group": "overlay",
+      "type": "int",
+      "min": -8000,
+      "max": 8000,
+      "confidence": "documented",
+      "risk": "safe",
+      "summary": "Vertical screen position of the performance overlay.",
+      "detail": "Positions the overlay a fixed distance from the top edge. Confirmed from a real profile at -50, which does not vary with resolution the way the horizontal offset does.",
+      "hardware_policy": "always_available"
+    },
+    {
       "key": "PerfOverlay.FrameFileLogEnable",
       "group": "overlay",
       "type": "bool",
@@ -358,7 +445,7 @@
       "confidence": "documented",
       "risk": "safe",
       "summary": "Depth of field method. 0 disables it.",
-      "detail": "Depth of field blurs everything that is not what the game thinks you are looking at, which in a shooter is usually an enemy. Free frames and better target acquisition. Always 0.",
+      "detail": "Depth of field blurs everything that is not what the game thinks you are looking at, which in a shooter is usually an enemy. Free frames and better target acquisition. Always 0. A real User.cfg reference noted this one 'must be entered manually in each map' - i.e. it may not reliably take effect from User.cfg alone and might need setting via the in-game console per match. Not independently confirmed by this app; flagged so a report of 'this didn't seem to do anything' isn't a surprise.",
       "hardware_policy": "always_available",
       "pros": [
         "Stops the game blurring whatever it thinks you are not looking at, which is usually an enemy",
@@ -508,7 +595,7 @@
       "confidence": "legacy",
       "risk": "moderate",
       "summary": "Compute-shader path for tiled light culling.",
-      "detail": "1 on any GPU newer than about 2014. Historically a fix for specific old hardware; leave alone otherwise.",
+      "detail": "Was 1 on any GPU newer than about 2014 in older Frostbite titles, a fix for specific old hardware. A real BF6 profile was seen with this explicitly set to 0, annotated 'no longer works' - i.e. setting it to 1 does not do anything useful in BF6, superseding the older-title guidance. Leave at 0 (or do not set it at all).",
       "hardware_policy": "legacy_only"
     },
     {
