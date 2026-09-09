@@ -198,6 +198,24 @@ def test_target_round_trip(tmp_path, monkeypatch):
     assert prefs.load_target() == {"preset": "quality", "overlay": True}
 
 
+def test_skipped_update_sha_round_trip(tmp_path, monkeypatch):
+    """"Skip this version" (see prefs.py's module docstring for why it's its
+    own file, not folded into target.json)."""
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    assert prefs.load_skipped_update_sha() == ""
+
+    prefs.save_skipped_update_sha("abc123")
+    assert prefs.load_skipped_update_sha() == "abc123"
+
+    # A later skip of a newer commit replaces the old one outright.
+    prefs.save_skipped_update_sha("def456")
+    assert prefs.load_skipped_update_sha() == "def456"
+
+    # Saving/loading the target file separately never touches the skip file.
+    prefs.save_target({"preset": "esports"})
+    assert prefs.load_skipped_update_sha() == "def456"
+
+
 def test_rename_profile_preserves_data_and_drops_the_old_name(tmp_path, monkeypatch):
     monkeypatch.setenv("APPDATA", str(tmp_path))
     prefs.save_profile("Old name", {"preset": "esports"})

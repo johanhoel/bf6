@@ -64,7 +64,7 @@ reset individually or all at once.
 Both tables group their rows by category (Video &gt; Basic/Advanced/Ray Tracing,
 Controls, Audio for settings; CPU Threading, Render Pipeline, Frame Pacing and so
 on for `User.cfg`), with a search box, a jump-to-category dropdown, and
-expand/collapse-all — the settings list alone is 46 rows and only getting longer.
+expand/collapse-all — the settings list alone is 54 rows and only getting longer.
 The in-game settings table also has an **Impact column**: each row is tagged
 with which hardware resource(s) it meaningfully costs — GPU (teal), CPU (pink),
 VRAM (purple) — colour-matched to a legend above the table, so scanning down
@@ -214,6 +214,10 @@ Two ways to actually get the update from that dialog:
   use `git pull` / `UPDATE.bat` instead).
 - **Open GitHub Actions build →** — the original path, always available: opens
   the Actions run that has the built executables attached, same as before.
+- **Skip this version** — stops the sidebar banner and startup status message
+  from nagging about that specific commit again. It comes back on its own once
+  `main` moves past it. An explicit **Check for updates** click always shows
+  the real state regardless of what was skipped before.
 
 **Or build it yourself** on any Windows machine with Python 3.11+:
 
@@ -316,7 +320,7 @@ Five JSON datasets under `data/`, bundled as plain files at build time (see
 | `gpu_db.json` | 78 GPUs — VRAM, relative BF6 performance index, DLSS/FSR/XeSS support, frame-generation capability, ray tracing strength |
 | `cpu_db.json` | 60 CPUs — core/thread counts, hybrid topology, X3D and chiplet layout, estimated CPU-limited FPS, plus a fallback heuristic for anything not listed |
 | `cfg_commands.json` | 45 `User.cfg` commands, each with a **confidence level** (`documented` / `community` / `legacy`), a **risk level**, a hardware policy, an explanation, and pros/cons for the ones actually emitted |
-| `ingame_settings.json` | 46 in-game settings with per-preset values, VRAM gates, a per-option **cost curve** in percent of frame time, and **directional pros and cons** for raising or lowering each one. 7 are marked `confidence: unverified` — sharpening, view/LOD distance, reflection quality, and weapon FOV are plausible additions never sourced from a confirmed profile; display mode, texture filtering, and camera shake were found missing the same flag in an audit and brought in line. None of the 7 carry a profile key, so none are ever written automatically. 7 more are new CPU/GPU/thermal-saving additions confirmed from a real profile: Undergrowth Quality (a real key genuinely separate from Vegetation Quality), Significance Quality (one of the largest CPU levers available, especially for CPUs with no spare threads for `Thread.*` overrides), and the background/menu frame-rate-limiter family, recommended on unconditionally since it only ever throttles the game while tabbed out or in a menu |
+| `ingame_settings.json` | 54 in-game settings with per-preset values, VRAM gates, a per-option **cost curve** in percent of frame time, and **directional pros and cons** for raising or lowering each one. 4 are marked `confidence: unverified` — view/LOD distance, weapon FOV, display mode, and camera shake are plausible additions never sourced from a confirmed profile, so none carry a profile key and none are ever written automatically. Sharpening, Reflection Quality, and Texture Filtering used to be on that list too, until a real profile confirmed their keys (`SharpnessSlider`/`ReflectionQuality`/`TextureFiltering`) and they were promoted to actually write. Also confirmed from a real profile: Undergrowth Quality and Significance Quality (CPU/GPU-saving additions), the background/menu frame-rate-limiter family (recommended on unconditionally since it only ever throttles the game while tabbed out or in a menu), a separate Screen Space Reflections toggle, Vehicle Field of View, two never-written FOV-scale toggles, and a Dynamic Resolution Scaling family (Resolution Scale, DRS enable/floor/target — the target is computed to always match Frame Rate Limit) |
 | `system_tweaks.json` | 14 OS/BIOS/driver checks with trigger conditions |
 | `keybind_concepts.json` | Key-binding decode data — see "Key bindings" below |
 
@@ -369,7 +373,7 @@ only thing that needs changing.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests -q          # 226 tests
+python -m pytest tests -q          # 233 tests
 PYTHONPATH=src python -m bf6tuner --preset competitive   # CLI, runs on Linux too
 ```
 
