@@ -366,6 +366,30 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-09 (39) — Self-update confirmed working live, end to end
+
+After entry (38)'s process fix (verify the running PID's actual start time
+and the exe file's actual write time against each other, not just "left a
+build behind"), the live test finally succeeded: clicked "Download and
+install now," the app closed, and it **reopened on its own** running the
+new build - confirmed by the running PID's start time (10:08:08) landing
+just after the exe on disk was overwritten (10:08:05), with no leftover
+`.update.ps1` left behind (clean self-delete). This is the first fully
+successful, unassisted, real self-update on a real machine, after four
+prior attempts (entries 33, 34, 36, one unlogged repeat) that each failed
+for a different, now-fixed reason: a genuine job-object question (partly
+addressed, ultimately not the cause), a `goto`-in-parens `cmd.exe` parse
+bug (the real first bug, entry 35), a console-dependency issue with
+`DETACHED_PROCESS` breaking `timeout`/piped `tasklist` (the real second
+bug, entry 37), and three repeats of the same testing-methodology mistake
+along the way (verifying a fix using a process that didn't actually have
+it) - now avoided by checking timestamps directly instead of assuming.
+
+This entry is itself the "something newer" for a second, confirming test -
+self-update should not be treated as fixed off one success alone, given
+how many prior attempts looked identical to success right up until they
+weren't.
+
 ### 2026-09-09 (38) — The pattern from entries (34)/(36) recurred a third time
 
 Retested entry (37)'s PowerShell rewrite; the leftover file was
