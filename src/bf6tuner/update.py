@@ -368,6 +368,18 @@ def apply_update_and_relaunch(new_exe: Path) -> None:
         f"    }}\n"
         f"}}\n"
         f"Start-Process -FilePath '{current}'\n"
+        # Do not let this script (and so powershell.exe, the process that
+        # just launched the new instance) exit immediately after
+        # Start-Process returns. PyInstaller's onefile parent-path security
+        # check (see docstring) runs in the *newly started* process shortly
+        # after it launches - if the launching parent has already fully
+        # exited by then, the OS can no longer resolve a path for it at
+        # all, which is a *harder* failure than a mismatch ("failed to
+        # obtain executable path for parent process", not "different
+        # executable") - hit for real, immediately after fixing the
+        # mismatch case. Giving the new process a few seconds to get past
+        # its own startup before this one tears down avoids the race.
+        f"Start-Sleep -Seconds 3\n"
         f"Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force\n",
         encoding="utf-8",
     )

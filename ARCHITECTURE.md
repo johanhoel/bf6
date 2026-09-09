@@ -366,6 +366,39 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-09 (41) — Fourth self-update bug: launcher exited before the new process finished its own check
+
+Entry (40)'s fix for the "different executable" variant surfaced a
+different error immediately after: **"Security validation failure: failed
+to obtain executable path for parent process!"** - a harder failure (can't
+resolve a path at all) than a mismatch (resolved a path, it didn't match).
+User confirmed directly: the exe file itself was already correctly
+updated by this point - the failure is specifically in the *new*
+process's own startup, not the swap.
+
+Cause: `Start-Process -FilePath '{current}'` in the helper script is
+fire-and-forget - the very next line deletes the script and lets
+`powershell.exe` (the process that just launched the new instance) exit
+immediately. PyInstaller's onefile parent-path check (entry (40)) runs
+inside the newly-started process shortly after launch - if the launching
+parent has *already fully exited* by the time that check runs, the OS can
+no longer resolve a path for it at all, which is exactly this harder
+failure mode. Fixed by keeping the script (and so `powershell.exe`) alive
+a few seconds after `Start-Process` returns, before it deletes itself and
+exits - giving the new process's own startup a chance to get past that
+check while its parent can still be resolved.
+
+Verified with the same isolated test as always (still completes
+automatically, ~4s slower now from the added `Start-Sleep`) - flagged
+again, same as entry (40): that test can't reproduce PyInstaller's actual
+bootloader-parent behavior, so only a real live test confirms this one.
+Four self-update bugs found and fixed in one session now (job-object
+theory partly addressed/not the cause, `goto`-in-parens `cmd.exe` parse
+bug, `DETACHED_PROCESS` console dependency, two variants of PyInstaller's
+onefile parent-path check) - each one only visible by actually running it
+live, never predictable from reading the code. All 211 tests pass.
+Followed the standing build/release workflow.
+
 ### 2026-09-09 (40) — Third self-update bug: PyInstaller's onefile parent-check
 
 Confirming retest of entry (39) hit a *new* failure: a real Windows error
