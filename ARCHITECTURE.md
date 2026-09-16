@@ -366,6 +366,46 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-16 (52) — PresentMon "access denied" closes: Core Isolation, confirmed, user's call to leave it
+
+Live retest of entry (49)'s fix on the user's real machine (RTX 5090, Ryzen 7
+9850X3D) hit a genuine, different failure: `error: failed to start trace
+session: access denied` even targeting a real PID directly - not the hang/
+lingering-session bug entry (49) fixed (that one's confirmed gone; this is
+the other documented cause in `run_capture`'s own error text).
+
+Checked both remaining candidates directly rather than guess:
+- `logman query -ets` - no lingering `PresentMon` session. Ruled out.
+- `HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\
+  HypervisorEnforcedCodeIntegrity` - `Enabled: 1`. Core Isolation/Memory
+  Integrity is ON.
+
+Asked the user to relaunch fully elevated and retest, to separate "just
+needs admin" from "Core Isolation blocks it regardless of admin" - **still
+"access denied" even elevated**, which confirms Core Isolation as the actual
+cause on this machine, not a plain rights problem.
+
+Presented the fix (Settings -> Windows Security -> Device security -> Core
+Isolation -> Memory Integrity -> Off, then reboot) and the trade-off
+directly rather than touching the registry key myself - a security-posture
+change like this is the user's call, even though it was technically
+reachable from here. **User's decision: leave Memory Integrity on** -
+benchmarking via PresentMon is not available on this machine, full stop.
+Nothing else in the app is affected; `find_presentmon`/the Benchmark tab
+already degrade gracefully (disabled button, clear "not located"/error
+messaging) when PresentMon can't be used, so no code change was needed to
+honour this - it was already the designed behaviour for "PresentMon isn't
+working here," just never confirmed to be the final state for this
+specific machine until now.
+
+Also fixed two stale counts spotted while looking at the database for
+unrelated reasons: README said 78 GPUs/60 CPUs; `gpu_db.json`/`cpu_db.json`
+actually have 95/61 (grown via earlier, already-committed work this
+session didn't touch, just never had its own count update). Confirmed the
+user's exact CPU (`ryzen 7 9850x3d`) is already in the database, correctly
+matched - the earlier concern that it might be missing was a mistaken read
+of the field name (`id`, not `name`) during a quick grep, not a real gap.
+
 ### 2026-09-09 (51) — Export/import a profile as one shareable file
 
 User picked "share a profile as a file you can send someone" from the
