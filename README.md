@@ -33,6 +33,11 @@ prominently as the things it does.
 
 ## What it does
 
+**Looks like it belongs on a modern desktop** — real animated iOS-style toggle
+switches (a custom-painted widget, not a restyled checkbox), a segmented-
+control tab bar (rounded pills, the selected one filled solid accent blue),
+and generous rounding throughout, in iOS's own dark-mode system blue.
+
 **Detects** — CPU model (with the microarchitecture inferred from the model number when the exact part is not in the database), physical cores, logical threads, P-core/E-core split;
 GPU model, real VRAM (from the driver registry key, not the 4GB-capped WMI
 field), driver version; RAM capacity, speed and module count; native resolution
@@ -427,7 +432,8 @@ bf6/
 │   ├── diagnostics.py    one-file troubleshooting export: hardware, DB matches, file/PresentMon
 │   │                     locations, Smart App Control/Core Isolation state
 │   ├── cli.py            headless mode
-│   └── ui/               Qt window, comparison view, restore/locate/update dialogs, theme
+│   └── ui/               Qt window, comparison view, restore/locate/update dialogs, theme,
+│                         toggle_switch.py (custom-painted iOS-style switch)
 ├── packaging/            build.py, build.bat, PyInstaller spec, icon generator
 └── tests/                engine policy, comparison, restore and update tests
 ```

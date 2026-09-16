@@ -16,7 +16,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QAction, QColor, QFont, QIcon, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
-    QAbstractSpinBox, QApplication, QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox,
+    QAbstractSpinBox, QApplication, QButtonGroup, QComboBox, QDoubleSpinBox,
     QFileDialog, QFrame, QGraphicsDropShadowEffect, QGridLayout, QHBoxLayout, QHeaderView, QLabel,
     QLineEdit, QMainWindow, QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QScrollArea,
     QSizePolicy, QSpinBox, QSplitter, QStyle, QTableWidget, QTableWidgetItem, QTabWidget, QTextEdit,
@@ -29,6 +29,7 @@ from ..engine import LINKED_CFG_KEYS, PRESETS, Recommendation, Target, recommend
 from . import theme
 from .locate import LocateDialog
 from .restore import RestoreDialog
+from .toggle_switch import ToggleSwitch
 from .update_dialog import UpdateDialog
 
 
@@ -114,6 +115,18 @@ def dim(text: str) -> QLabel:
     label.setObjectName("Dim")
     label.setWordWrap(True)
     return label
+
+
+def _toggle_row(label_text: str, switch: ToggleSwitch) -> QHBoxLayout:
+    """Label on the left, switch pinned to the right edge - the standard
+    iOS Settings-row layout, not a checkbox-with-caption-after-it."""
+    row = QHBoxLayout()
+    row.setSpacing(10)
+    label = QLabel(label_text)
+    label.setWordWrap(True)
+    row.addWidget(label, 1)
+    row.addWidget(switch, 0, Qt.AlignVCenter)
+    return row
 
 
 # Same threshold per resource everywhere a setting's impact is shown (the
@@ -789,7 +802,7 @@ class MainWindow(QMainWindow):
         form.addWidget(self.refresh_box, 1, 1)
         target_layout.addLayout(form)
 
-        self.checkboxes: dict[str, QCheckBox] = {}
+        self.checkboxes: dict[str, ToggleSwitch] = {}
         for key, label, tip, default in (
             ("vrr", "G-Sync / FreeSync display", "Caps frames just below refresh so VRR stays engaged.", True),
             ("hdr", "HDR display (real HDR, not HDR400)", "Only tick this for a panel with local dimming or OLED.", False),
@@ -802,12 +815,12 @@ class MainWindow(QMainWindow):
              "Older BF3/BF4/BFV console variables that may be silently ignored by BF6.", False),
             ("overlay", "Enable the in-game FPS overlay", "Strongly recommended while testing.", True),
         ):
-            box = QCheckBox(label)
-            box.setToolTip(tip)
-            box.setChecked(default)
-            box.toggled.connect(self.refresh)
-            self.checkboxes[key] = box
-            target_layout.addWidget(box)
+            switch = ToggleSwitch()
+            switch.setToolTip(tip)
+            switch.setChecked(default)
+            switch.toggled.connect(self.refresh)
+            self.checkboxes[key] = switch
+            target_layout.addLayout(_toggle_row(label, switch))
 
         self._apply_persisted_target()
 

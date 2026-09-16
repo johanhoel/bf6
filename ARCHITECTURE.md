@@ -366,6 +366,70 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-16 (54) — iOS-inspired visual refresh: real toggle switches, rounder everything, a segmented-control tab bar
+
+User: "make the GUI look fresh and modern, make it stand out more like
+iOS." Scoped this to what a Qt Widgets stylesheet (plus one small custom
+widget) can honestly deliver - not a frameless-window rewrite, which is a
+different, much larger and riskier undertaking (custom titlebar, drag-to-
+move, resize handles, snap-to-edge all have to be reimplemented by hand)
+that this ask didn't call for. Windows 11's own DWM already rounds every
+app's window corners at the OS level regardless of anything this app does,
+so the one piece of "iOS-like roundness" a frameless rewrite would chase is
+already free here.
+
+- **New `ui/toggle_switch.py`, `ToggleSwitch(QAbstractButton)`** - a real
+  custom-painted iOS-style switch (rounded track, sliding circular knob,
+  animated via `QPropertyAnimation` on a `Property(float)` position), not a
+  QSS trick on QCheckBox - Qt's stylesheet engine can reshape a checkbox's
+  indicator box but cannot make a knob visibly slide from one side to the
+  other, that needs a real `paintEvent`. Exposes the same
+  setChecked/isChecked/toggled/setToolTip surface QCheckBox did, so it
+  drops into `MainWindow.checkboxes` unchanged everywhere except how each
+  row is built.
+- New `_toggle_row()` in `app.py` lays each one out the way iOS Settings
+  actually does it - label on the left, switch pinned to the right edge -
+  replacing the checkbox-with-caption-after-it layout. All 7 sidebar
+  toggles (VRR, HDR, background load, frame gen, thread overrides, legacy
+  keys, FPS overlay) converted; `QCheckBox` import dropped from `app.py`
+  entirely (nothing else in the codebase used a real `QCheckBox` widget -
+  confirmed by grep before removing the import).
+- **theme.py**: accent colour changed to `#0a84ff`, iOS's actual dark-mode
+  system blue (was `#4c8dff`, a similar hue but not the real one). Radius
+  bumped up across the board (cards 10->18px, buttons 6->12px, inputs
+  6->11px, the detail pane 8->14px, tooltips 6->10px) - the single biggest
+  lever for "looks like iOS" in a stylesheet-only pass. Primary-button and
+  selected-tab text switched from near-black to white, since white-on-blue
+  is iOS's own convention and reads better against the more saturated new
+  accent than the old near-black did.
+- **Tab bar restyled as a segmented control** - the biggest single change:
+  selected tabs used to be transparent with a thin accent underline; now
+  every tab is a fully-rounded pill, and the selected one fills solid
+  accent-blue with white text, which is exactly iOS's Settings/Health-app
+  segmented-control look, not a Windows-y underline-tab convention.
+- Preset buttons (Esports/Competitive/Balanced/Quality) given a heavier
+  radius (6->14px) to read as chips/segments rather than square buttons,
+  without restructuring them out of the existing `QButtonGroup` - they were
+  already individually-rounded exclusive buttons in a row, so this was a
+  radius change, not a rebuild.
+- Font stack now tries `'Segoe UI Variable Display'`/`'Segoe UI Variable
+  Text'` first - Windows 11's own modern system font, the closest thing
+  this platform has to SF Pro's rounded, friendly weight - falling back to
+  plain Segoe UI (present on every Windows version this app supports) if
+  unavailable.
+- Verified the only way this project's own precedent allows for pure Qt-
+  widget-layer work: `py_compile`, plus instantiating `ToggleSwitch`
+  directly under `QT_QPA_PLATFORM=offscreen` and confirming
+  `isChecked()`/`setChecked()`/`sizeHint()` and a `paintEvent` all run
+  without error. Re-confirmed `MainWindow` still cannot be constructed
+  offscreen at all (entry (22)'s limitation, tried again directly for this
+  entry - times out/crashes silently with no stderr, still no workaround) -
+  a live look in the actual running app is the only way to see this one,
+  same as every other visual-only change in this project. All 239 tests
+  pass (no regressions; nothing new to add at the pure-logic layer since
+  this entry has none beyond `ToggleSwitch`'s trivial checked-state
+  plumbing, already exercised above).
+
 ### 2026-09-16 (53) — Diagnostics export bundle
 
 User picked this from a fresh "what else can be implemented" list, directly
