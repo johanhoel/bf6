@@ -111,6 +111,15 @@ everything back.
 game on a mechanical drive, and so on, each with the reason and the fix. These
 are reported, never applied silently.
 
+**Exports diagnostics** — `File > Export diagnostics...` writes one text file
+with your hardware, which database entries actually matched it (or whether it
+fell back to the heuristic), where the game's files and PresentMon were
+found, and the handful of Windows security features already confirmed to
+affect this app (Smart App Control block history, Core Isolation/Memory
+Integrity state) — everything a troubleshooting conversation needs up front,
+instead of a round of screenshots and manual checks. Separate from `Export
+report`, which is about the recommendation itself, not the environment.
+
 ## Current vs recommended
 
 The first tab is a diff of your machine against the recommendation, and it is
@@ -391,7 +400,7 @@ only thing that needs changing.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests -q          # 234 tests
+python -m pytest tests -q          # 239 tests
 PYTHONPATH=src python -m bf6tuner --preset competitive   # CLI, runs on Linux too
 ```
 
@@ -415,6 +424,8 @@ bf6/
 │   ├── update.py         checks GitHub for a newer build, never blocks or raises
 │   ├── icon.py           the app icon, drawn in pure Python - shared by the build and the running app
 │   ├── benchmark.py      real frame-time capture via PresentMon, checked against the prediction
+│   ├── diagnostics.py    one-file troubleshooting export: hardware, DB matches, file/PresentMon
+│   │                     locations, Smart App Control/Core Isolation state
 │   ├── cli.py            headless mode
 │   └── ui/               Qt window, comparison view, restore/locate/update dialogs, theme
 ├── packaging/            build.py, build.bat, PyInstaller spec, icon generator

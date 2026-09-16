@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import APP_NAME, __version__
-from .. import benchmark, compare, database, hardware, icon, keybinds, paths, prefs, update, writer
+from .. import benchmark, compare, database, diagnostics, hardware, icon, keybinds, paths, prefs, update, writer
 from ..engine import LINKED_CFG_KEYS, PRESETS, Recommendation, Target, recommend
 from . import theme
 from .locate import LocateDialog
@@ -331,6 +331,7 @@ class MainWindow(QMainWindow):
         self._add_action(file_menu, "&Restore...", "Ctrl+Shift+R", self.open_restore)
         file_menu.addSeparator()
         self._add_action(file_menu, "&Export report...", "Ctrl+E", self.export_report)
+        self._add_action(file_menu, "Export diagnostics...", None, self.export_diagnostics)
         self._add_action(file_menu, "&Save User.cfg only", "Ctrl+S", self.save_user_cfg)
         self._add_action(file_menu, "&Apply everything", "Ctrl+Return", self.apply_everything)
         file_menu.addSeparator()
@@ -3159,6 +3160,29 @@ class MainWindow(QMainWindow):
         target.write_text(content, encoding="utf-8")
         self.statusBar().showMessage(f"Report written to {target}")
         QMessageBox.information(self, "Report exported", str(target))
+
+    def export_diagnostics(self) -> None:
+        """A troubleshooting bundle, not the settings report above - see
+        diagnostics.py's module docstring for why the two are separate."""
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export diagnostics", str(Path.home() / "bf6-tuner-diagnostics.txt"),
+            "Text file (*.txt)",
+        )
+        if not path:
+            return
+        content = diagnostics.build_report(
+            profile=self.profile,
+            rec=self.rec,
+            game=self.game,
+            presentmon_path=self._presentmon_path,
+            setting_override_count=len(self.setting_overrides),
+            cfg_override_count=len(self.cfg_overrides),
+            local_commit=update.local_commit(),
+        )
+        target = Path(path)
+        target.write_text(content, encoding="utf-8")
+        self.statusBar().showMessage(f"Diagnostics written to {target}")
+        QMessageBox.information(self, "Diagnostics exported", str(target))
 
 
 def run() -> int:

@@ -366,6 +366,46 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-16 (53) — Diagnostics export bundle
+
+User picked this from a fresh "what else can be implemented" list, directly
+motivated by entry (52)'s own investigation - that took several rounds of
+screenshots plus me running PowerShell by hand to gather hardware, DB match
+status, and Windows security state one piece at a time.
+
+- New `diagnostics.py`, `build_report()` - a pure function (aside from two
+  small Windows-only reads) taking exactly what `MainWindow` already has in
+  hand (`profile`, `rec`, `game`, `_presentmon_path`, override counts,
+  `update.local_commit()`) and assembling one text file: hardware, whether
+  the GPU/CPU actually matched a database entry or fell back to the
+  heuristic, current recommendation summary, where the game's files and
+  PresentMon were found, and the two Windows security features already
+  confirmed by hand this session to affect this app - Core Isolation/Memory
+  Integrity (entry (52)) and Code Integrity/Smart App Control block history
+  (entries (17)/(42)).
+- Deliberately separate from `writer.render_report()`/`render_json()` -
+  those are about the *recommendation* (settings, pros/cons); this is about
+  the *environment* a bug report needs first.
+- `File > Export diagnostics...` - a menu-only entry, no action-bar button
+  (matches how Export/Import Profile were placed - a "when you need it,"
+  not "every session" action) and no keyboard shortcut (not common enough
+  to want one).
+- The two Windows-security reads are read-only (`winreg` for Core
+  Isolation's registry key, a `Get-WinEvent` query for Code Integrity
+  block history) and each independently swallow their own failure into an
+  honest "could not be determined" string rather than raising - a
+  diagnostics export failing because diagnosis itself failed would be a bad
+  joke.
+- 5 new tests in `tests/test_diagnostics.py`, monkeypatching the two
+  Windows-only functions so the rest is deterministic across machines
+  (hardware/DB-match text, the "no recommendation yet" case, located vs
+  not-found files, the share-caution line always present). All 239 tests
+  pass (234 + 5 new).
+- Also noticed and fixed while re-checking Python tooling for this: bare
+  `python` on this machine resolves to a 3.9 install with none of this
+  project's dependencies - the working interpreter is the 3.12 install.
+  Not a code issue, saved to memory so it doesn't cost time again.
+
 ### 2026-09-16 (52) — PresentMon "access denied" closes: Core Isolation, confirmed, user's call to leave it
 
 Live retest of entry (49)'s fix on the user's real machine (RTX 5090, Ryzen 7
