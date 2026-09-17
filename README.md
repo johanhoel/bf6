@@ -33,11 +33,6 @@ prominently as the things it does.
 
 ## What it does
 
-**Looks like it belongs on a modern desktop** — real animated iOS-style toggle
-switches (a custom-painted widget, not a restyled checkbox), a segmented-
-control tab bar (rounded pills, the selected one filled solid accent blue),
-and generous rounding throughout, in iOS's own dark-mode system blue.
-
 **Detects** — CPU model (with the microarchitecture inferred from the model number when the exact part is not in the database), physical cores, logical threads, P-core/E-core split;
 GPU model, real VRAM (from the driver registry key, not the 4GB-capped WMI
 field), driver version; RAM capacity, speed and module count; native resolution
