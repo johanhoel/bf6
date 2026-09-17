@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 from . import APP_NAME, __version__
-from . import compare, database, hardware, paths, system_state, writer
+from . import compare, database, hardware, paths, prefs, system_state, writer
 from .engine import PRESETS, Target, recommend
 
 
@@ -182,6 +182,12 @@ def main(argv: list[str] | None = None) -> int:
             return 4
         result = writer.write_profsave(rec, game.profsave, restore_point=restore_point)
         print(result.message)
+
+    if args.apply or args.apply_ingame:
+        prefs.record_applied_config(writer.applied_config_entry(
+            rec, wrote_user_cfg=bool(destination and args.apply), wrote_profsave=bool(args.apply_ingame),
+            restore_stamp=restore_point.stamp if restore_point else None, source="cli",
+        ))
 
     if restore_point:
         writer.prune_restore_points()

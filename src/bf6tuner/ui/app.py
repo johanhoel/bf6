@@ -29,6 +29,7 @@ from .. import benchmark, compare, database, diagnostics, hardware, icon, keybin
 from ..engine import LINKED_CFG_KEYS, PRESETS, Recommendation, Target, recommend
 from . import theme
 from .locate import LocateDialog
+from .history import HistoryDialog
 from .restore import RestoreDialog
 from .toggle_switch import ToggleSwitch
 from .update_dialog import UpdateDialog
@@ -368,6 +369,7 @@ class MainWindow(QMainWindow):
         self._add_action(file_menu, "&Locate files...", "Ctrl+L", self.locate_files)
         self._add_action(file_menu, "Bac&k up now", "Ctrl+B", self.backup_now)
         self._add_action(file_menu, "&Restore...", "Ctrl+Shift+R", self.open_restore)
+        self._add_action(file_menu, "Apply &history...", "Ctrl+H", self.open_apply_history)
         file_menu.addSeparator()
         self._add_action(file_menu, "&Export report...", "Ctrl+E", self.export_report)
         self._add_action(file_menu, "Export diagnostics...", None, self.export_diagnostics)
@@ -3180,6 +3182,9 @@ class MainWindow(QMainWindow):
             self.refresh()
             self.statusBar().showMessage("Configuration restored.")
 
+    def open_apply_history(self) -> None:
+        HistoryDialog(self).exec()
+
     def save_user_cfg(self) -> None:
         if self.rec is None or not self._guard_game_closed():
             return
@@ -3198,6 +3203,11 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Could not write User.cfg", str(exc))
             return
         writer.prune_restore_points()
+        prefs.record_applied_config(writer.applied_config_entry(
+            self.rec, wrote_user_cfg=True, wrote_profsave=False,
+            restore_stamp=point.stamp if point else None,
+            profile_name=self._selected_profile_name(),
+        ))
         detail = result.message
         if point:
             detail += f"\n\nRestore point taken first:\n{point.directory}"
@@ -3274,6 +3284,13 @@ class MainWindow(QMainWindow):
             return
 
         writer.prune_restore_points()
+        prefs.record_applied_config(writer.applied_config_entry(
+            self.rec,
+            wrote_user_cfg=cfg_path is not None,
+            wrote_profsave=profsave is not None and bool(profsave_plan),
+            restore_stamp=point.stamp if point else None,
+            profile_name=self._selected_profile_name(),
+        ))
         if point:
             messages.append(f"\nRestore point: {point.stamp}\n{point.directory}")
         QMessageBox.information(self, "Applied", "\n".join(messages) or "Nothing needed changing.")

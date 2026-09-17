@@ -366,6 +366,37 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-17 (57) — Apply history: the last 10 configs actually applied
+
+User asked to be able to track the 10 latest applied configs.
+
+- New `writer.applied_config_entry()` builds one plain-dict entry (preset or
+  active profile name, resolution/refresh, predicted/GPU/CPU FPS,
+  bottleneck, which file(s) were actually written, the restore-point stamp
+  taken at the same moment, source `gui`/`cli`) - deliberately a *log of
+  intent*, separate from the existing restore points, which snapshot file
+  *content* for rollback. `prefs.record_applied_config()` stores it, newest
+  first, capped at `HISTORY_LIMIT = 10`, in its own `apply_history.json` -
+  same one-file-per-concern pattern as `update_skip.json`.
+- Wired into every real write path: `apply_everything()`, `save_user_cfg()`
+  in `ui/app.py`, and `cli.py`'s `--apply`/`--apply-ingame` (not a bare
+  `--out`, which is more "export to inspect" than "apply"). All three reuse
+  the one `applied_config_entry()` builder rather than duplicating the
+  field list three times.
+- New `ui/history.py`, `HistoryDialog` - read-only by design (a "Clear
+  history" button, nothing else actionable), same visual pattern as
+  `RestoreDialog`. Reachable via **File > Apply history...** (Ctrl+H),
+  menu-only like Export Diagnostics - a "when you need it" action, not an
+  action-bar one.
+- 254 tests pass (3 new: a capped-newest-first round trip and a clear in
+  `test_paths.py`, one for `applied_config_entry`'s field contents in
+  `test_restore.py`). Not covered by a CLI-level test - a live smoke test on
+  this machine tripped `paths.is_game_running()` (Battlefield's own
+  anti-cheat service was apparently running as a background process even
+  with the game closed, a real detection rather than a bug) before reaching
+  the new code, but the same `applied_config_entry()`/
+  `record_applied_config()` calls are already covered directly.
+
 ### 2026-09-17 (56) — Tactical HUD visual redesign, current-settings-first startup, real Windows-setting detection, network check, hardware-spec export
 
 User didn't like the iOS-inspired look from entry (54) and asked for design

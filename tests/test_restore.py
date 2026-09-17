@@ -162,6 +162,24 @@ def test_writing_without_a_restore_point_still_backs_up(sandbox, rec):
     assert result.backup is not None and result.backup.is_file()
 
 
+# -- apply history -------------------------------------------------------------
+
+def test_applied_config_entry_captures_what_and_when(rec):
+    entry = writer.applied_config_entry(
+        rec, wrote_user_cfg=True, wrote_profsave=False,
+        restore_stamp="20260101-120000", profile_name=None,
+    )
+    assert entry["preset"] == "competitive"
+    assert entry["resolution"] == "2560x1440"
+    assert entry["refresh_hz"] == 165
+    assert entry["predicted_fps"] == rec.predicted_fps
+    assert entry["wrote_user_cfg"] is True
+    assert entry["wrote_profsave"] is False
+    assert entry["restore_stamp"] == "20260101-120000"
+    assert entry["source"] == "gui"
+    assert entry["timestamp"]  # non-empty, real ISO timestamp
+
+
 # -- pruning -----------------------------------------------------------------
 
 def test_pruning_keeps_the_newest(sandbox):

@@ -31,6 +31,8 @@ CFG_OVERRIDES_FILE = "cfg_overrides.json"
 PROFILES_FILE = "profiles.json"
 TARGET_FILE = "target.json"
 UPDATE_SKIP_FILE = "update_skip.json"
+HISTORY_FILE = "apply_history.json"
+HISTORY_LIMIT = 10
 
 
 def config_dir() -> Path:
@@ -188,3 +190,29 @@ def load_skipped_update_sha() -> str:
 
 def save_skipped_update_sha(sha: str) -> None:
     _write(UPDATE_SKIP_FILE, {"sha": sha})
+
+
+# -- apply history -------------------------------------------------------------
+# The last HISTORY_LIMIT configs actually applied (User.cfg and/or
+# PROFSAVE_profile written for real - not "Export report", not a bare CLI
+# --out), newest first. This is a *log of intent* (what preset, what FPS was
+# predicted, when) - not a substitute for the restore points in writer.py,
+# which snapshot file content and are what a rollback actually reads from.
+# Entries are built by writer.applied_config_entry(); this module only knows
+# how to store a plain dict, same as everything else here.
+
+def load_apply_history() -> list[dict[str, Any]]:
+    entries = _read(HISTORY_FILE).get("entries", [])
+    return entries if isinstance(entries, list) else []
+
+
+def record_applied_config(entry: dict[str, Any]) -> list[dict[str, Any]]:
+    entries = load_apply_history()
+    entries.insert(0, entry)
+    del entries[HISTORY_LIMIT:]
+    _write(HISTORY_FILE, {"entries": entries})
+    return entries
+
+
+def clear_apply_history() -> None:
+    _write(HISTORY_FILE, {"entries": []})

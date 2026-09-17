@@ -216,6 +216,28 @@ def test_skipped_update_sha_round_trip(tmp_path, monkeypatch):
     assert prefs.load_skipped_update_sha() == "def456"
 
 
+def test_apply_history_is_capped_at_ten_newest_first(tmp_path, monkeypatch):
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    assert prefs.load_apply_history() == []
+
+    for i in range(12):
+        prefs.record_applied_config({"preset": "balanced", "timestamp": f"t{i}"})
+
+    history = prefs.load_apply_history()
+    assert len(history) == 10
+    # Newest (t11) first, oldest two (t0, t1) fell off the end.
+    assert [e["timestamp"] for e in history] == [f"t{i}" for i in range(11, 1, -1)]
+
+
+def test_clear_apply_history(tmp_path, monkeypatch):
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    prefs.record_applied_config({"preset": "balanced", "timestamp": "t0"})
+    assert prefs.load_apply_history()
+
+    prefs.clear_apply_history()
+    assert prefs.load_apply_history() == []
+
+
 def test_rename_profile_preserves_data_and_drops_the_old_name(tmp_path, monkeypatch):
     monkeypatch.setenv("APPDATA", str(tmp_path))
     prefs.save_profile("Old name", {"preset": "esports"})

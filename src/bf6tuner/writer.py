@@ -131,6 +131,31 @@ def create_restore_point(targets: dict[str, Path | None], label: str) -> Restore
     return point
 
 
+def applied_config_entry(
+    rec: Recommendation, *, wrote_user_cfg: bool, wrote_profsave: bool,
+    restore_stamp: str | None, profile_name: str | None = None, source: str = "gui",
+) -> dict[str, object]:
+    """One entry for prefs.record_applied_config()'s capped history of the
+    last 10 configs actually applied - a human-readable log of *what* and
+    *when*, distinct from the restore points above, which snapshot file
+    *content* for rollback rather than summarising intent."""
+    return {
+        "timestamp": _dt.datetime.now().astimezone().isoformat(timespec="seconds"),
+        "preset": rec.target.preset,
+        "profile_name": profile_name,
+        "resolution": f"{rec.target.width}x{rec.target.height}",
+        "refresh_hz": rec.target.refresh_hz,
+        "predicted_fps": rec.predicted_fps,
+        "gpu_fps": rec.gpu_fps,
+        "cpu_fps": rec.cpu_fps,
+        "bottleneck": rec.bottleneck,
+        "wrote_user_cfg": wrote_user_cfg,
+        "wrote_profsave": wrote_profsave,
+        "restore_stamp": restore_stamp,
+        "source": source,
+    }
+
+
 def list_restore_points() -> list[RestorePoint]:
     """Every restore point, newest first. Unreadable ones are skipped, not fatal."""
     root = backup_root()
