@@ -28,6 +28,7 @@ from .. import APP_NAME, __version__
 from .. import benchmark, compare, database, diagnostics, hardware, icon, keybinds, paths, prefs, system_state, update, writer
 from ..engine import LINKED_CFG_KEYS, PRESETS, Recommendation, Target, recommend
 from . import theme
+from .cut_corner_frame import CutCornerCard
 from .locate import LocateDialog
 from .history import HistoryDialog
 from .restore import RestoreDialog
@@ -92,11 +93,15 @@ CFG_GROUP_RESOURCE = {
 
 
 def card(title: str) -> tuple[QFrame, QVBoxLayout]:
-    frame = QFrame()
-    frame.setObjectName("Card")
+    # CutCornerCard paints its own background/border/accent-stripe (a single
+    # diagonal-cut corner, Battlefield's own deploy-screen panel language -
+    # QSS has no clip-path), so it takes no objectName/QSS styling itself.
+    frame = CutCornerCard()
     # A subtle drop shadow gives the card real elevation off the window
     # background - QSS alone has no box-shadow equivalent, so this is the
     # one bit of styling that has to be done in Python rather than theme.py.
+    # It naturally follows the cut-corner shape too, since Qt's graphics
+    # effects render from the widget's actual (non-rectangular) alpha.
     shadow = QGraphicsDropShadowEffect(frame)
     shadow.setBlurRadius(24)
     shadow.setOffset(0, 3)
@@ -137,6 +142,18 @@ def _toggle_row(label_text: str, switch: ToggleSwitch) -> QHBoxLayout:
 # a residual vram: 1 that isn't worth calling out on its own.
 _IMPACT_THRESHOLD = {"gpu": 1, "cpu": 1, "vram": 2}
 _IMPACT_ORDER = ("gpu", "cpu", "vram")
+
+
+def _resource_badge_html(resource: str) -> str:
+    """A small dog-tag-style chip (tinted solid background, angular corners)
+    for a GPU/CPU/VRAM resource tag - shared by the settings table's Impact
+    column and the User.cfg table's Category column so the two can never
+    drift into looking like two different tagging systems."""
+    return (
+        f"<span style='color:{theme.RESOURCE_COLOUR[resource]};"
+        f" background-color:{theme.RESOURCE_BADGE_BG[resource]}; font-weight:700;"
+        f" font-size:10px; padding:2px 6px; border-radius:2px'>{resource.upper()}</span>"
+    )
 
 
 def _cost_label(val: int) -> str:
@@ -2265,11 +2282,7 @@ class MainWindow(QMainWindow):
         breakdown = _impact_breakdown(setting)
         if not breakdown:
             return ""
-        return "&nbsp;".join(
-            f"<span style='color:{theme.RESOURCE_COLOUR[resource]}; font-weight:600;"
-            f" font-size:10px'>{resource.upper()}</span>"
-            for resource, _cost in breakdown
-        )
+        return "&nbsp;".join(_resource_badge_html(resource) for resource, _cost in breakdown)
 
     @staticmethod
     def _impact_tooltip(setting: dict) -> str:
@@ -2291,10 +2304,7 @@ class MainWindow(QMainWindow):
         resource = CFG_GROUP_RESOURCE.get(command.get("group", ""))
         if resource is None:
             return ""
-        return (
-            f"<span style='color:{theme.RESOURCE_COLOUR[resource]}; font-weight:600;"
-            f" font-size:10px'>{resource.upper()}</span>"
-        )
+        return _resource_badge_html(resource)
 
     @staticmethod
     def _cfg_category_tooltip(command: dict) -> str:

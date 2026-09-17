@@ -1,34 +1,37 @@
 """A tactical-HUD stylesheet, kept in one place so the whole window reads as
 one thing.
 
-Angular, near-black, cyan/magenta - the "Tactical HUD" direction picked from
-a round of mockups (2026-09-17). Qt's stylesheet engine has no box-shadow,
-text-shadow, CSS grid backgrounds, clip-path or keyframe animation, so the
-glow/scanline/spinning-reticle flourishes from the HTML mockup are not all
-reproduced here - see app.py's `card()` and the Prediction card for the one
-piece (a QGraphicsDropShadowEffect glow) that *is* worth doing in Python.
+Angular, near-black, with Battlefield 6's own signature orange-on-black
+accent (not the cyan of the first "Tactical HUD" pass - user asked for the
+app to read as part of the game itself; orange/black is the game's actual,
+verified default HUD colour scheme, not a guess). Qt's stylesheet engine has
+no box-shadow, text-shadow, CSS grid backgrounds, clip-path or keyframe
+animation, so the glow/scanline/spinning-reticle flourishes from the HTML
+mockups are not all reproduced here - see app.py's `card()` and the
+Prediction card for the one piece (a QGraphicsDropShadowEffect glow) that
+*is* worth doing in Python.
 """
 
 from __future__ import annotations
 
-BG = "#07080a"
-BG_RAISED = "#0e1013"
-BG_RAISED_TOP = "#13171a"  # gradient top-stop for Card - a hair lighter, for a subtle raised feel
-BG_SUNKEN = "#040506"
-BG_HOVER = "#151a1d"   # button hover fill - a visible lift, not just a border-color swap
-BG_PRESSED = "#020304"
-BORDER = "#1c2b2e"
-BORDER_LIGHT = "#2a3f44"  # card border, hairline-brighter than BORDER for definition on a solid bg
-TEXT = "#d8fbff"
-TEXT_DIM = "#7b98a0"
-ACCENT = "#00e5ff"        # tactical-HUD cyan
-ACCENT_DIM = "#0a5f6e"
-ACCENT_TRACK = "#0a2a30"  # meter/progress track - a lighter step of the accent ramp, not flat black
+BG = "#0a0908"
+BG_RAISED = "#12100e"
+BG_RAISED_TOP = "#17140f"  # gradient top-stop for Card - a hair lighter, for a subtle raised feel
+BG_SUNKEN = "#050403"
+BG_HOVER = "#1a1612"   # button hover fill - a visible lift, not just a border-color swap
+BG_PRESSED = "#030202"
+BORDER = "#2a2018"
+BORDER_LIGHT = "#3d2f22"  # card border, hairline-brighter than BORDER for definition on a solid bg
+TEXT = "#f2ede4"
+TEXT_DIM = "#8a8074"
+ACCENT = "#ff6a13"        # Battlefield 6's own signature orange
+ACCENT_DIM = "#7a3308"
+ACCENT_TRACK = "#2e1608"  # meter/progress track - a lighter step of the accent ramp, not flat black
 
 OK = "#39ff88"
 WARN = "#ffd60a"
-BAD = "#ff2b6d"
-INFO = "#00e5ff"
+BAD = "#ff3b3b"           # red, not magenta - matches the "danger/enemy" red every Battlefield HUD uses
+INFO = "#4fc3ff"          # blue - matches the "ally/friendly-info" blue every Battlefield HUD uses
 
 SEVERITY_COLOUR = {"high": BAD, "medium": WARN, "low": TEXT_DIM, "info": INFO}
 
@@ -36,12 +39,19 @@ SEVERITY_COLOUR = {"high": BAD, "medium": WARN, "low": TEXT_DIM, "info": INFO}
 # distinct from OK/WARN/BAD/ACCENT/INFO above (those carry a "good/caution/
 # bad" meaning elsewhere; these three just distinguish which hardware
 # resource a setting trades against, with no judgement attached). GPU shares
-# the accent cyan on purpose - GPU is the resource this app spends most of
+# the accent orange on purpose - GPU is the resource this app spends most of
 # its attention on, so the two reinforce each other everywhere they appear.
-GPU_COLOUR = ACCENT     # cyan
-CPU_COLOUR = "#ff2b6d"  # magenta
-VRAM_COLOUR = "#ffd60a"  # gold
+# CPU reuses INFO's blue rather than a fourth unrelated hue.
+GPU_COLOUR = ACCENT      # orange
+CPU_COLOUR = INFO        # blue
+VRAM_COLOUR = "#c9a227"  # brass/gold - distinct from WARN's brighter gold so the two never look identical
 RESOURCE_COLOUR = {"gpu": GPU_COLOUR, "cpu": CPU_COLOUR, "vram": VRAM_COLOUR}
+
+# Solid (not translucent - Qt's rich-text HTML subset handles alpha inline
+# inconsistently) tinted chip backgrounds for the Impact/Category badges -
+# a small dog-tag-style tag rather than plain coloured text, one per
+# resource above.
+RESOURCE_BADGE_BG = {"gpu": "#3a2410", "cpu": "#0f2530", "vram": "#332810"}
 
 MONO = "'Cascadia Mono', 'Cascadia Code', Consolas, 'DejaVu Sans Mono', monospace"
 
@@ -50,7 +60,7 @@ MONO = "'Cascadia Mono', 'Cascadia Code', Consolas, 'DejaVu Sans Mono', monospac
 # text uses the same family as the numbers instead of a humanist sans.
 FONT_STACK = f"{MONO}, 'Segoe UI', sans-serif"
 
-# Small and sharp, not rounded - the defining shape change from the previous
+# Small and sharp, not rounded - the defining shape change from the earlier
 # iOS-inspired pass. A couple of values below intentionally stay a hair
 # larger than this (dropdown popups, tooltips) purely so text doesn't touch
 # a corner at the tightest spots; the visual language is still "angular."
@@ -65,18 +75,14 @@ QWidget {{
 }}
 QScrollArea, QScrollArea > QWidget > QWidget {{ background: transparent; border: none; }}
 
-QFrame#Card {{
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {BG_RAISED_TOP}, stop:1 {BG_RAISED});
-    border: 1px solid {BORDER_LIGHT};
-    border-left: 3px solid {ACCENT};
-    border-radius: {RADIUS}px;
-}}
 QFrame#HeaderBar {{ border: none; border-bottom: 1px solid {BORDER}; }}
 QLabel#CardTitle {{
     color: {ACCENT};
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 2px;
+    padding-bottom: 6px;
+    border-bottom: 2px solid {ACCENT};
 }}
 QLabel#Hero {{ font-size: 38px; font-weight: 700; letter-spacing: -0.5px; color: {ACCENT}; }}
 QLabel#HeroUnit {{ color: {TEXT_DIM}; font-size: 12px; }}
@@ -93,13 +99,13 @@ QPushButton {{
 }}
 QPushButton:hover {{ background-color: {BG_HOVER}; border-color: {ACCENT_DIM}; }}
 QPushButton:pressed {{ background-color: {BG_PRESSED}; }}
-QPushButton:disabled {{ color: #465559; border-color: #14191b; }}
+QPushButton:disabled {{ color: #59503f; border-color: #1b1610; }}
 QPushButton#Primary {{
-    background-color: {ACCENT}; border-color: {ACCENT}; color: #001318; font-weight: 700;
+    background-color: {ACCENT}; border-color: {ACCENT}; color: #1a0d02; font-weight: 700;
 }}
-QPushButton#Primary:hover {{ background-color: #33ecff; }}
-QPushButton#Primary:pressed {{ background-color: #00b8cc; }}
-QPushButton#Primary:disabled {{ background-color: {ACCENT_DIM}; color: #6b98a0; }}
+QPushButton#Primary:hover {{ background-color: #ff8c3f; }}
+QPushButton#Primary:pressed {{ background-color: #cc5400; }}
+QPushButton#Primary:disabled {{ background-color: {ACCENT_DIM}; color: #a08262; }}
 
 QPushButton#TableButton {{
     padding: 2px 10px;
@@ -113,9 +119,9 @@ QPushButton#Preset {{
 }}
 QPushButton#Preset:hover:!checked {{ background-color: {BG_HOVER}; }}
 QPushButton#Preset:checked {{
-    background-color: {ACCENT}; border-color: {ACCENT}; color: #001318;
+    background-color: {ACCENT}; border-color: {ACCENT}; color: #1a0d02;
 }}
-QPushButton#Preset:checked:hover {{ background-color: #33ecff; }}
+QPushButton#Preset:checked:hover {{ background-color: #ff8c3f; }}
 
 QComboBox, QSpinBox, QLineEdit {{
     background-color: {BG_SUNKEN};
@@ -151,13 +157,13 @@ QTabBar::tab {{
     letter-spacing: 0.5px;
 }}
 QTabBar::tab:selected {{
-    color: #001318; background: {ACCENT};
+    color: #1a0d02; background: {ACCENT};
 }}
 QTabBar::tab:hover:!selected {{ color: {TEXT}; background: {BG_HOVER}; }}
 
 QTableWidget {{
     background-color: {BG_RAISED}; border: none; border-radius: {RADIUS}px;
-    gridline-color: {BORDER}; alternate-background-color: #0a0c0e;
+    gridline-color: {BORDER}; alternate-background-color: #0d0b09;
 }}
 QHeaderView::section {{
     background-color: {BG_SUNKEN}; color: {TEXT_DIM};
@@ -189,11 +195,11 @@ QSplitter::handle:vertical {{
 }}
 
 QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
-QScrollBar::handle:vertical {{ background: #1c3238; border-radius: 4px; min-height: 30px; }}
-QScrollBar::handle:vertical:hover {{ background: #274449; }}
+QScrollBar::handle:vertical {{ background: #382b1f; border-radius: 4px; min-height: 30px; }}
+QScrollBar::handle:vertical:hover {{ background: #4a3a2a; }}
 QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; width: 0; }}
 QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px; }}
-QScrollBar::handle:horizontal {{ background: #1c3238; border-radius: 4px; min-width: 30px; }}
+QScrollBar::handle:horizontal {{ background: #382b1f; border-radius: 4px; min-width: 30px; }}
 
 QProgressBar {{
     background-color: {ACCENT_TRACK}; border: none; border-radius: 2px;

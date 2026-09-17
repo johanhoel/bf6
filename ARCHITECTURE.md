@@ -366,6 +366,48 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-17 (58) — BF6's real orange/black, and Battlefield deploy-screen panel language
+
+User asked for the UI to look like it's actually part of Battlefield 6,
+rather than a generic tactical HUD. Checked rather than guessed: web search
+confirmed BF6's actual default HUD is orange-on-black (community sources
+specifically describe it that way), not the cyan this app had picked for
+entry (56)'s "Tactical HUD" direction.
+
+- **`theme.py` recoloured wholesale**: `ACCENT` changed from cyan `#00e5ff`
+  to BF6's own `#ff6a13` orange; backgrounds/borders warmed from a cool
+  blue-black to a warm brown-black to match. `BAD` changed from magenta to
+  red and `INFO` to blue - deliberately echoing the enemy-red/ally-blue
+  convention every Battlefield HUD already uses, so those colours now carry
+  the same meaning here that they do in the actual game. `CPU_COLOUR` now
+  reuses `INFO`'s blue (was a separate magenta) for the same reason; `GPU_COLOUR`
+  still equals `ACCENT` per entry (56)'s reasoning.
+- **`ui/cut_corner_frame.py`, new `CutCornerCard(QFrame)`**: every card now
+  has one diagonal-cut corner (bottom-right), Battlefield's own deploy/
+  loadout-screen panel language - Qt's stylesheet engine has no clip-path,
+  so this paints its own background/border/left-accent-stripe in a
+  `paintEvent` rather than leaning on QFrame's box model, same reasoning as
+  `toggle_switch.py`'s custom paint. `card()` in `app.py` now returns this
+  instead of a plain `QFrame`, so every card in the app picked it up from
+  one change; the existing black elevation `QGraphicsDropShadowEffect`
+  (and the Prediction card's cyan-now-orange glow override) still work
+  unchanged, since Qt's graphics effects render from the widget's actual
+  (non-rectangular) alpha automatically.
+- **Card titles gained an orange underline rule** (`border-bottom` in QSS -
+  the one part of this pass plain CSS could do on its own).
+- **GPU/CPU/VRAM tags became solid-tinted dog-tag-style chips** instead of
+  plain coloured text - new `theme.RESOURCE_BADGE_BG` plus a shared
+  `_resource_badge_html()` helper in `app.py` so the settings table's Impact
+  column and the User.cfg table's Category column can never drift into two
+  different tagging systems (both already funnelled through one shared
+  `RESOURCE_COLOUR` dict; this just adds the matching background). Used a
+  solid tint rather than a translucent one deliberately - Qt's rich-text
+  HTML subset handles inline alpha inconsistently, not worth the risk for a
+  cosmetic tweak.
+- 254 tests pass (no new pure logic here - purely visual/paint-layer, same
+  as every prior styling entry; verified live in the real running app, not
+  the offscreen-`MainWindow`-can't-construct route).
+
 ### 2026-09-17 (57) — Apply history: the last 10 configs actually applied
 
 User asked to be able to track the 10 latest applied configs.
