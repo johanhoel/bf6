@@ -673,10 +673,15 @@ def _evaluate_tweaks(
 # --------------------------------------------------------------------------
 
 def _coerce_override(setting: dict[str, Any], value: Any) -> Any:
-    """Bring a stored override back into the type the setting uses.
+    """Bring a stored override back into the type the setting uses, clamped to
+    the range the setting actually supports.
 
     Overrides are round-tripped through JSON, so an integer choice can come back
     as the string "3". Upscaler values are genuinely strings and stay as they are.
+    Clamping matters because a stale override left over from before a setting's
+    bounds were tightened (or a hand-edited prefs file) would otherwise be
+    written straight through to PROFSAVE_profile - e.g. a leftover sharpening
+    override of 3000 sailing past today's 0-100 range.
     """
     kind = setting.get("type")
     if kind in ("enum", "bool"):
@@ -684,14 +689,21 @@ def _coerce_override(setting: dict[str, Any], value: Any) -> Any:
         if any(isinstance(option.get("value"), str) for option in options):
             return value
         try:
-            return int(float(value))
+            number = int(float(value))
         except (TypeError, ValueError):
             return value
+        valid = [option["value"] for option in options] or [0, 1]
+        return max(min(valid), min(number, max(valid)))
     if kind == "slider":
         try:
             number = float(value)
         except (TypeError, ValueError):
             return value
+        lo, hi = setting.get("min"), setting.get("max")
+        if lo is not None:
+            number = max(number, lo)
+        if hi is not None:
+            number = min(number, hi)
         return int(number) if abs(number - round(number)) < 1e-9 else number
     return value
 

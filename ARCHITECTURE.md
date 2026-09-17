@@ -366,6 +366,43 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-17 (55) — Fixed unclamped per-setting overrides writing out-of-range values to PROFSAVE_profile
+
+User reported a real, reproducible bug: the app had set Sharpening to
+something like 2000 or 3000 against a 0-100 range. Reproduced directly rather
+than guessing: `engine.recommend(..., overrides={"sharpening": 3000})`
+produced a `SettingChoice.value` of `3000`, and `writer.profsave_plan()` then
+happily queued writing `GstRender.SharpnessSlider` to the literal string
+`"3000"`.
+
+Root cause: `engine._coerce_override` (used for every in-game *setting*
+override) only converted an override's JSON-round-tripped type back to
+int/float - it never clamped to the setting's own `min`/`max` (sliders) or
+valid `options` (enum/bool). Its sibling, `_coerce_cfg_override` (used for
+`User.cfg` *command* overrides), already did this correctly - the omission
+looks like a plain inconsistency between the two, not an intentional
+design choice. The normal UI path can't produce an out-of-range value (the
+spinbox itself is bounded by the setting's min/max), so this needs a stale
+`setting_overrides.json` (e.g. left over from before a setting's bounds were
+tightened, or hand-edited) to trigger - `prefs.load_setting_overrides()` does
+no validation on load either. Once such a value exists, though, nothing
+between it and the game's save file catches it.
+
+- `_coerce_override` now clamps slider overrides to `setting["min"]`/`["max"]`
+  and enum/bool overrides to the valid `options` values (or `{0, 1}` for the
+  bools that have no explicit options list) - same pattern as
+  `_coerce_cfg_override`, so both override paths are equally defensive now.
+- Fixed one existing test that only worked *because* of the missing clamp:
+  `test_unverified_settings_are_overridable` hardcoded an override of `55` for
+  every non-enum unverified setting, which happened to be below
+  `weapon_fov`'s real floor of 60 - now uses `setting["min"] + 1` instead of a
+  magic constant.
+- New regression test,
+  `test_out_of_range_slider_override_is_clamped_before_it_reaches_profsave`,
+  pins both directions (3000 clamps to 100, -50 clamps to 0) and confirms the
+  clamped value is what actually reaches `profsave_plan`'s output, not just
+  the intermediate `SettingChoice`. All 240 tests pass (239 + 1 new).
+
 ### 2026-09-16 (54) — iOS-inspired visual refresh: real toggle switches, rounder everything, a segmented-control tab bar
 
 User: "make the GUI look fresh and modern, make it stand out more like

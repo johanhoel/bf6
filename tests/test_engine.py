@@ -656,7 +656,7 @@ def test_unverified_settings_are_recommended_and_flagged(db, setting_id):
 @pytest.mark.parametrize("setting_id", UNVERIFIED_IDS)
 def test_unverified_settings_are_overridable(db, setting_id):
     setting = db.setting(setting_id)
-    value = 3 if setting["type"] == "enum" else 55
+    value = 3 if setting["type"] == "enum" else setting["min"] + 1
     forced = recommend(db, make_profile(), Target(preset="competitive"),
                        overrides={setting_id: value})
     choice = next(c for c in forced.settings if c.setting_id == setting_id)
@@ -696,6 +696,23 @@ def test_promoted_settings_now_have_a_real_profsave_key(db, setting_id, profsave
     choice = next(c for c in rec.settings if c.setting_id == setting_id)
     plan = writer.profsave_plan(rec, {})
     assert any(key == profsave_key for key, _, _ in plan) or choice.value is not None
+
+
+def test_out_of_range_slider_override_is_clamped_before_it_reaches_profsave(db):
+    """A stale override (e.g. from before a setting's bounds were tightened, or
+    a hand-edited prefs file) must not sail past the setting's own min/max and
+    land in PROFSAVE_profile - regression for a real bug where a leftover
+    sharpening override of 3000 got written verbatim against a 0-100 range."""
+    rec = recommend(db, make_profile(), Target(preset="competitive"),
+                    overrides={"sharpening": 3000})
+    choice = next(c for c in rec.settings if c.setting_id == "sharpening")
+    assert choice.value == 100
+    plan = writer.profsave_plan(rec, {"GstRender.SharpnessSlider": "0.000000"})
+    assert ("GstRender.SharpnessSlider", "0.000000", "100") in plan
+
+    rec = recommend(db, make_profile(), Target(preset="competitive"),
+                    overrides={"sharpening": -50})
+    assert next(c for c in rec.settings if c.setting_id == "sharpening").value == 0
 
 
 # -- new CPU/GPU settings confirmed from the same real profile --------------
