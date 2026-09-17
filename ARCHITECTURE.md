@@ -366,6 +366,117 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-17 (56) — Tactical HUD visual redesign, current-settings-first startup, real Windows-setting detection, network check, hardware-spec export
+
+User didn't like the iOS-inspired look from entry (54) and asked for design
+mockups instead. Built 5 static HTML/CSS mockups (tactical HUD, Windows 11
+Fluent, dense terminal, gaming-gear/ROG, vibrant "Aurora" SaaS) rendered via
+`claude-in-chrome` against a temporary local HTTP server so they could be
+screenshotted and compared without touching the real Qt app; user picked
+Tactical HUD, then asked for a "more fantastic" version (glowing HUD corner
+brackets, a spinning reticle, scanline sweep, grid background) - built as a
+6th mockup variant, approved, then implemented for real.
+
+- **`theme.py` rewritten wholesale**: near-black background, cyan accent
+  (`#00e5ff`) with magenta/gold secondaries, monospace font stack
+  (`Cascadia Mono`/Consolas) throughout instead of Segoe UI Variable, sharp
+  `border-radius: 3px` everywhere instead of the previous 10-18px rounding,
+  and a left accent-stripe border on every card. `GPU_COLOUR` now literally
+  equals `ACCENT` - GPU-related things read cyan everywhere in the app, not
+  just coincidentally similar shades.
+  Qt's stylesheet engine has no box-shadow/text-shadow/CSS-grid-background/
+  clip-path/keyframe-animation support, so the mockup's glow, scanline sweep
+  and spinning reticle are **not** reproduced - only a static cyan
+  `QGraphicsDropShadowEffect` glow on the Prediction card (same "has to be
+  Python, not QSS" pattern the existing card-elevation shadow already used)
+  and a `// ` prefix on every card title (`card()` in app.py, one call site,
+  so every card picked it up at once) made it across. Said so explicitly
+  rather than silently dropping the rest - a future session could build the
+  animated pieces as bespoke custom-painted widgets (same idea as
+  `toggle_switch.py`) if it's worth the effort then.
+
+- **Startup now opens showing your actual current in-game configuration,
+  not a preset's recommendation** - user reported the app kept opening with
+  settings that didn't match what they actually had set. Root cause: the
+  existing "detect closest preset + seed overrides from current" logic
+  (already in `_on_detected`) was gated to fire only on a literal
+  first-ever launch (`not self._has_persisted_target`), so every session
+  after the very first one just restored whatever preset was last picked
+  instead. Changed the gate to a per-run flag (`_startup_detect_done`,
+  set once per app launch, never on a later manual "Re-detect hardware"
+  click - that must not silently reset mid-session work) and changed the
+  outcome from "check the detected preset's button" to "check no button at
+  all" - the same "custom config, no preset highlighted" convention already
+  used for a loaded profile (`_on_preset`'s own mutual-exclusivity comment).
+  `_apply_persisted_target` no longer highlights a preset button either;
+  it still restores `self._active_preset` as a same-value fallback for the
+  rare case detection fails, and the preset button construction default
+  (`competitive` pre-checked) was removed so there's no false flash before
+  detection resolves. Still skipped entirely when a named profile was
+  restored as active - profiles keep owning the "what's active" indicator.
+
+- **Real Windows-setting detection**, new `system_state.py` module (same
+  discipline as `diagnostics.py`'s registry/event-log reads: never raise,
+  "unknown" (`None`) instead of a guess, read-only, never writes anything).
+  `system_tweaks.json`'s `hags`/`game_mode`/`power_plan`/
+  `fullscreen_optimizations`/`overlays` entries used to fire unconditionally
+  on every run (`"trigger": {"always": true}`) regardless of whether the
+  setting was already correct - now they only fire when actually detected as
+  off/suboptimal: HAGS via `HKLM\...\GraphicsDrivers!HwSchMode`, Game Mode
+  via `HKCU\...\GameBar!AutoGameModeEnabled` (absent key defaults to *on*,
+  matching Windows' own documented default since 10 1809 - unlike HAGS,
+  where an absent key is left `None`/unknown, since that key's
+  pre-population varies by build/driver), active power plan via
+  `powercfg /getactivescheme` matched against known scheme GUIDs, fullscreen
+  optimisations via the per-exe `AppCompatFlags\Layers` compatibility-flag
+  string, and running overlay processes via `tasklist` (Discord, RTSS,
+  NVIDIA's overlay process, Overwolf - deliberately **not** Steam itself,
+  which is always running for a Steam install and whose own overlay state
+  isn't reliably readable from here, so flagging it would just be noise).
+  `resizable_bar` and `gpu_driver` were deliberately left as before -
+  actual BIOS ReBAR state and "is this driver the latest" aren't reliably
+  checkable from software alone without guessing.
+  `engine.recommend()` gained a `windows_state` parameter following the
+  exact existing `install_drive_media` pattern (computed once by the
+  caller, not fetched by the engine itself) - `_evaluate_tweaks` treats a
+  `None` field as "don't know, don't nag," never "assume the worst."
+  Computed once per hardware (re)detect inside `DetectWorker` (two
+  subprocess calls plus registry reads - too slow to redo on every
+  `refresh()`, which fires on every single settings change), never
+  recomputed by `refresh()` itself. Wired into `cli.py` the same way.
+  9 new tests in `test_engine.py` pin "nothing detected -> nothing fires"
+  plus each of the five real-detection paths individually.
+
+- **Network check**, user-triggered (a ping takes a second or two - too
+  slow to fold into the tweaks pipeline above, which reruns on every
+  settings change). New "Network" card on the System Checks tab: "Check
+  connection" pings a public server (8.8.8.8, off the UI thread via a new
+  `PingWorker`) and reports average latency/packet loss, explicitly labelled
+  as a general connectivity read, **not** actual in-game server latency
+  (this app has no way to know which BF6 server a match puts you on).
+  "Open speed test (fast.com)" just opens the browser via `webbrowser.open()`
+  - no bandwidth measurement is attempted locally, matching this app's
+  standing "point at an external tool/service, don't reimplement or bundle
+  it" policy (PresentMon, self-update's manual GitHub link).
+
+- **"Copy hardware spec" button** on the sidebar's hardware card - new
+  `diagnostics.hardware_spec_text()`, deliberately narrower than
+  `build_report()`: CPU/GPU/RAM/display/storage only, no file paths, no
+  security state, so it's safe to paste in a Discord message or forum post
+  without a second look (unlike Export Diagnostics, which says outright to
+  review before sharing). Copies via `QApplication.clipboard()`.
+
+- **Sidebar widened 390px -> 460px** - user reported CPU/GPU/storage text
+  getting cut off in the hardware card; that fixed-width scroll area was the
+  single choke point for the whole left column.
+
+- 251 tests pass (240 + 9 Windows-tweak tests + 2 hardware-spec-text tests).
+  Not independently screenshotted by this session for every change (same
+  offscreen-`MainWindow` limitation as every prior visual-only entry) -
+  verified live in the real running app instead, including a real screenshot
+  the user shared back showing the System Checks tab, current-settings
+  startup state, and sidebar width all working as intended.
+
 ### 2026-09-17 (55) — Fixed unclamped per-setting overrides writing out-of-range values to PROFSAVE_profile
 
 User reported a real, reproducible bug: the app had set Sharpening to

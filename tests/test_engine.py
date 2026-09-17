@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from bf6tuner import database, writer  # noqa: E402
 from bf6tuner.engine import PRESETS, Target, match_cpu, match_gpu, recommend  # noqa: E402
 from bf6tuner.hardware import HardwareProfile, MemoryStick  # noqa: E402
+from bf6tuner.system_state import WindowsState  # noqa: E402
 
 
 @pytest.fixture(scope="session")
@@ -223,6 +224,66 @@ def test_single_channel_is_detected(db):
     profile = make_profile(ram_gb=16.0, ram_sticks=[MemoryStick(16.0, 3200, "A1")], ram_speed_mts=3200)
     rec = recommend(db, profile, Target(preset="balanced"))
     assert any(t["id"] == "dual_channel" for t in rec.tweaks)
+
+
+# -- Windows-setting tweaks: real detection, not a blanket "always" --------
+# (see system_state.py - these used to fire unconditionally on every run)
+
+def test_windows_tweaks_stay_quiet_with_nothing_detected(db):
+    """The default WindowsState (nothing checked/found) must not nag about
+    any of these - "unknown" is not the same as "wrong"."""
+    rec = recommend(db, make_profile(), Target(preset="balanced"), windows_state=WindowsState())
+    ids = {t["id"] for t in rec.tweaks}
+    assert not ids & {"hags", "game_mode", "power_plan", "fullscreen_optimizations", "overlays"}
+
+
+def test_hags_off_is_detected(db):
+    rec = recommend(db, make_profile(), Target(preset="balanced"),
+                    windows_state=WindowsState(hags_enabled=False))
+    assert any(t["id"] == "hags" for t in rec.tweaks)
+
+
+def test_hags_on_does_not_fire(db):
+    rec = recommend(db, make_profile(), Target(preset="balanced"),
+                    windows_state=WindowsState(hags_enabled=True))
+    assert not any(t["id"] == "hags" for t in rec.tweaks)
+
+
+def test_game_mode_off_is_detected(db):
+    rec = recommend(db, make_profile(), Target(preset="balanced"),
+                    windows_state=WindowsState(game_mode_enabled=False))
+    assert any(t["id"] == "game_mode" for t in rec.tweaks)
+
+
+def test_power_plan_not_high_performance_is_detected_and_named(db):
+    rec = recommend(db, make_profile(), Target(preset="balanced"),
+                    windows_state=WindowsState(power_plan_name="Balanced", power_plan_high_performance=False))
+    tweak = next(t for t in rec.tweaks if t["id"] == "power_plan")
+    assert "Balanced" in tweak["why"]
+
+
+def test_fullscreen_optimizations_still_enabled_is_detected(db):
+    rec = recommend(db, make_profile(), Target(preset="balanced"),
+                    windows_state=WindowsState(fullscreen_opts_disabled_for_game=False))
+    assert any(t["id"] == "fullscreen_optimizations" for t in rec.tweaks)
+
+
+def test_fullscreen_optimizations_already_disabled_does_not_fire(db):
+    rec = recommend(db, make_profile(), Target(preset="balanced"),
+                    windows_state=WindowsState(fullscreen_opts_disabled_for_game=True))
+    assert not any(t["id"] == "fullscreen_optimizations" for t in rec.tweaks)
+
+
+def test_overlays_running_are_named_in_the_tweak(db):
+    rec = recommend(db, make_profile(), Target(preset="balanced"),
+                    windows_state=WindowsState(overlay_processes=["Discord", "RTSS (MSI Afterburner's overlay)"]))
+    tweak = next(t for t in rec.tweaks if t["id"] == "overlays")
+    assert "Discord" in tweak["why"] and "RTSS" in tweak["why"]
+
+
+def test_no_overlays_running_does_not_fire(db):
+    rec = recommend(db, make_profile(), Target(preset="balanced"), windows_state=WindowsState(overlay_processes=[]))
+    assert not any(t["id"] == "overlays" for t in rec.tweaks)
 
 
 # -- output rendering ------------------------------------------------------

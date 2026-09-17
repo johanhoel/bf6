@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import sys
 import traceback
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 
@@ -24,7 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import APP_NAME, __version__
-from .. import benchmark, compare, database, diagnostics, hardware, icon, keybinds, paths, prefs, update, writer
+from .. import benchmark, compare, database, diagnostics, hardware, icon, keybinds, paths, prefs, system_state, update, writer
 from ..engine import LINKED_CFG_KEYS, PRESETS, Recommendation, Target, recommend
 from . import theme
 from .locate import LocateDialog
@@ -104,7 +105,7 @@ def card(title: str) -> tuple[QFrame, QVBoxLayout]:
     layout.setContentsMargins(18, 16, 18, 18)
     layout.setSpacing(10)
     if title:
-        label = QLabel(title.upper())
+        label = QLabel(f"// {title.upper()}")
         label.setObjectName("CardTitle")
         layout.addWidget(label)
     return frame, layout
@@ -190,14 +191,20 @@ _NORMAL_FG     = QColor(theme.TEXT)
 
 
 class DetectWorker(QThread):
-    """Hardware detection shells out to PowerShell, so keep it off the UI thread."""
+    """Hardware detection shells out to PowerShell, so keep it off the UI thread.
 
-    finished_ok = Signal(object, object)
+    system_state.detect() joins it here for the same reason - two subprocess
+    calls (powercfg, tasklist) plus a few registry reads, not something to
+    run on the UI thread even though it's much cheaper than hardware.detect().
+    """
+
+    finished_ok = Signal(object, object, object)
     failed = Signal(str)
 
     def run(self) -> None:
         try:
-            self.finished_ok.emit(hardware.detect(), paths.discover(prefs.load()))
+            game = paths.discover(prefs.load())
+            self.finished_ok.emit(hardware.detect(), game, system_state.detect(game.executable))
         except Exception:
             self.failed.emit(traceback.format_exc())
 
@@ -242,6 +249,16 @@ class BenchmarkWorker(QThread):
             self.finished_ok.emit(stats)
 
 
+class PingWorker(QThread):
+    """A few ICMP round-trips block for a second or two - off the UI thread,
+    same reasoning as every other worker here."""
+
+    finished_ok = Signal(object)
+
+    def run(self) -> None:
+        self.finished_ok.emit(system_state.ping())
+
+
 class MainWindow(QMainWindow):
     def __init__(self, db: database.Database) -> None:
         super().__init__()
@@ -265,7 +282,16 @@ class MainWindow(QMainWindow):
         self.update_info: update.UpdateInfo | None = None
         self._busy_count = 0
         self._presentmon_path: Path | None = None
+        # Real-ish default until the first detect() finishes; refresh() reads
+        # this, never re-detects it itself (see _on_detected).
+        self.windows_state = system_state.WindowsState()
         self._has_persisted_target = False
+        self._profile_restored_active = False
+        # Fires at most once per run, on the very first hardware detection
+        # (startup's own call to redetect()) - never on a later manual
+        # "Re-detect hardware" click, which must not silently reset whatever
+        # the user has set up mid-session (see _on_detected).
+        self._startup_detect_done = False
         self._row_height_cache: int | None = None
         # The single source of truth for which preset backs the current
         # recommendation - NOT "whichever preset button is checked", because
@@ -755,6 +781,13 @@ class MainWindow(QMainWindow):
         self.hw_note = dim("")
         self.hw_note.setVisible(False)
         hw_layout.addWidget(self.hw_note)
+        copy_spec_button = QPushButton("Copy hardware spec")
+        copy_spec_button.setToolTip(
+            "Copies a short, plain-text spec (CPU/GPU/RAM/display/storage) to the "
+            "clipboard - for pasting into Discord, a forum post, or a bug report."
+        )
+        copy_spec_button.clicked.connect(self.copy_hardware_spec)
+        hw_layout.addWidget(copy_spec_button)
         layout.addWidget(hw_card)
 
         layout.addWidget(self._build_profiles_card())
@@ -769,7 +802,10 @@ class MainWindow(QMainWindow):
             button.setObjectName("Preset")
             button.setCheckable(True)
             button.setToolTip(PRESET_BLURB[name])
-            button.setChecked(name == "competitive")
+            # Never pre-checked: startup always opens showing your actual
+            # current configuration instead, with no preset button selected
+            # (see _on_detected) - this default is only ever visible for the
+            # instant before that resolves.
             self.preset_group.addButton(button, index)
             preset_grid.addWidget(button, index // 2, index % 2)
         preset_layout.addLayout(preset_grid)
@@ -830,7 +866,7 @@ class MainWindow(QMainWindow):
         # Scroll rather than squash: the window can be shorter than this column.
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setFixedWidth(390)
+        scroll.setFixedWidth(460)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setFrameShape(QFrame.NoFrame)
         scroll.setWidget(panel)
@@ -843,6 +879,15 @@ class MainWindow(QMainWindow):
         layout.setSpacing(14)
 
         pred_card, pred_layout = card("Prediction")
+        # A cyan glow instead of the plain card() elevation shadow - the one
+        # panel the tactical-HUD look treats as "lit up", matching the
+        # mockup's glowing hero (see theme.py's module docstring for why
+        # this has to be a Python QGraphicsDropShadowEffect, not QSS).
+        glow = QGraphicsDropShadowEffect(pred_card)
+        glow.setBlurRadius(36)
+        glow.setOffset(0, 0)
+        glow.setColor(QColor(theme.ACCENT))
+        pred_card.setGraphicsEffect(glow)
         row = QHBoxLayout()
         row.setSpacing(28)
         self.hero: dict[str, QLabel] = {}
@@ -901,8 +946,8 @@ class MainWindow(QMainWindow):
         self.warnings_area = self._make_scroll()
         self.tabs.addTab(self.warnings_area, "Warnings")
 
-        self.checks_area = self._make_scroll()
-        self.tabs.addTab(self.checks_area, "System checks")
+        self._checks_tab_widget = self._build_checks_tab()
+        self.tabs.addTab(self._checks_tab_widget, "System checks")
 
         self.keybinds_area = self._make_scroll()
         self.tabs.addTab(self.keybinds_area, "Key Bindings")
@@ -913,6 +958,64 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(self.tabs, 1)
         return panel
+
+    # -- system checks (Windows-setting tweaks + network) --------------------
+
+    def _build_checks_tab(self) -> QWidget:
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 10, 0, 0)
+        layout.setSpacing(10)
+
+        network_card, network_layout = card("Network")
+        control_row = QHBoxLayout()
+        self.ping_button = QPushButton("Check connection")
+        self.ping_button.clicked.connect(self.run_ping_test)
+        control_row.addWidget(self.ping_button)
+        speed_test_button = QPushButton(f"Open speed test ({system_state.SPEED_TEST_URL.split('//')[1]})")
+        speed_test_button.clicked.connect(self.open_speed_test)
+        control_row.addWidget(speed_test_button)
+        control_row.addStretch(1)
+        network_layout.addLayout(control_row)
+        self.ping_result = dim("Not checked yet.")
+        network_layout.addWidget(self.ping_result)
+        network_layout.addWidget(dim(
+            "Pings a well-known public server, not Battlefield's own - a general read on whether "
+            "your connection is responsive and stable, not your actual in-game latency, which "
+            "depends on which server a match puts you on. The speed test link opens your browser; "
+            "nothing is downloaded by this app."
+        ))
+        layout.addWidget(network_card)
+
+        self.checks_area = self._make_scroll()
+        layout.addWidget(self.checks_area, 1)
+        return container
+
+    def run_ping_test(self) -> None:
+        self.ping_button.setEnabled(False)
+        self.ping_result.setText("Pinging...")
+        self._ping_worker = PingWorker()
+        self._ping_worker.finished_ok.connect(self._on_ping_finished)
+        self._ping_worker.start()
+
+    def _on_ping_finished(self, result: system_state.PingResult) -> None:
+        self.ping_button.setEnabled(True)
+        if result.error:
+            self.ping_result.setText(f"{result.host}: {result.error}")
+            self.ping_result.setStyleSheet(f"color: {theme.WARN};")
+            return
+        parts = []
+        if result.avg_ms is not None:
+            parts.append(f"{result.avg_ms:g} ms average")
+        if result.loss_pct is not None:
+            parts.append(f"{result.loss_pct:g}% packet loss")
+        self.ping_result.setText(f"{result.host}: {', '.join(parts) or 'no reply'}")
+        self.ping_result.setStyleSheet(
+            f"color: {theme.BAD};" if (result.loss_pct or 0) > 0 else ""
+        )
+
+    def open_speed_test(self) -> None:
+        webbrowser.open(system_state.SPEED_TEST_URL)
 
     # -- benchmark (PresentMon) ----------------------------------------------
 
@@ -2420,9 +2523,13 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Hardware detection failed.")
         QMessageBox.warning(self, "Detection failed", detail[-1500:])
 
-    def _on_detected(self, profile: hardware.HardwareProfile, game: paths.GamePaths) -> None:
+    def _on_detected(
+        self, profile: hardware.HardwareProfile, game: paths.GamePaths,
+        windows_state: system_state.WindowsState,
+    ) -> None:
         self.profile = profile
         self.game = game
+        self.windows_state = windows_state
         self.redetect_button.setEnabled(True)
         self._busy_stop()
         for label in self.hw_labels.values():
@@ -2467,21 +2574,32 @@ class MainWindow(QMainWindow):
         self.refresh_box.setValue(max(p.max_refresh_hz, p.refresh_hz, 60))
         self.checkboxes["hdr"].setChecked(p.hdr_display)
 
-        # First-ever launch (no persisted target yet, see prefs.py): start
-        # from whichever preset actually needs the fewest changes against
-        # what's really saved right now, instead of a hardcoded default that
-        # may not match reality at all - then pull in every individual
-        # setting that still differs from that preset, so the app opens
-        # showing your actual configuration, not just the nearest preset.
-        if not self._has_persisted_target:
+        # Every launch (but never a later manual "Re-detect hardware" click -
+        # see _startup_detect_done) opens showing your actual current in-game
+        # configuration, not a preset's recommendation: pick whichever preset
+        # needs the fewest changes against what's really saved right now,
+        # purely as the internal FPS-model baseline (self._active_preset
+        # always needs a concrete value - see its own comment), then pull in
+        # every individual setting that still differs from that preset so the
+        # shown config matches reality. No preset button is checked - same
+        # "custom config, no preset highlighted" convention already used for
+        # a loaded profile (see _on_preset) - so it's visually clear you're
+        # looking at what you actually have, free to change from there.
+        # Skipped when a named profile was restored as active instead (that
+        # already owns the "what's active" indicator - see _apply_persisted_target).
+        if not self._startup_detect_done and not self._profile_restored_active:
             detected_preset = self._detect_closest_preset()
             if detected_preset is not None:
                 self._active_preset = detected_preset
-                button = self.preset_group.button(PRESETS.index(detected_preset))
-                if button is not None:
-                    button.setChecked(True)
-                    self.preset_blurb.setText(PRESET_BLURB[detected_preset])
+                checked_button = self.preset_group.checkedButton()
+                if checked_button is not None:
+                    checked_button.setChecked(False)
+                self.preset_blurb.setText(
+                    "Showing your current in-game configuration. "
+                    "Pick a preset above for a recommendation."
+                )
                 self._seed_overrides_from_current()
+        self._startup_detect_done = True
 
         self._loading = False
 
@@ -2651,16 +2769,24 @@ class MainWindow(QMainWindow):
         )
 
     def _apply_persisted_target(self) -> None:
-        """Restore the last explicitly-chosen preset/toggles (see prefs.py's
-        module docstring for why these, unlike most state, are remembered
-        rather than re-derived). Called during sidebar construction, while
+        """Restore the last explicitly-chosen toggles (see prefs.py's module
+        docstring for why these, unlike most state, are remembered rather
+        than re-derived). Called during sidebar construction, while
         `_loading` is still True, so this never triggers a premature refresh.
+
+        The preset itself is deliberately *not* restored/highlighted here
+        anymore - startup always opens showing your actual current in-game
+        configuration instead (see `_on_detected`'s startup-only detect+seed
+        block), so no preset button should look selected before that has had
+        a chance to run. `self._active_preset` is still set from whatever was
+        last saved, purely as a fallback for the (rare) case hardware
+        detection fails before that block gets to run.
 
         Also restores which named profile (see `_build_profiles_card`) was
         last selected, purely so the combo box shows it instead of "- none
         selected -" - it does **not** re-apply that profile's settings (the
-        preset/checkboxes/overrides restored above already carry whatever
-        was actually in effect, via the exact same mechanism regardless of
+        checkboxes/overrides restored above already carry whatever was
+        actually in effect, via the exact same mechanism regardless of
         whether they came from a profile or manual choices). This is
         deliberately just the combo's displayed selection, not a "currently
         loaded profile" tracking state - seeing your settings drift from a
@@ -2669,7 +2795,9 @@ class MainWindow(QMainWindow):
         restoring which name was last *picked* avoids that: it can never
         claim more than "this was the last one you looked at." When a
         profile name is restored, no preset button is highlighted either -
-        the two indicators are mutually exclusive (see `_on_preset`).
+        the two indicators are mutually exclusive (see `_on_preset`) - and
+        the startup detect+seed block is skipped entirely, the same way it
+        already defers to an explicitly loaded profile everywhere else.
         """
         saved = prefs.load_target()
         self._has_persisted_target = bool(saved)
@@ -2678,21 +2806,16 @@ class MainWindow(QMainWindow):
         preset = saved.get("preset")
         profile_name = saved.get("profile")
         has_profile = isinstance(profile_name, str) and bool(profile_name)
+        self._profile_restored_active = has_profile
         if preset in PRESETS:
             self._active_preset = preset
-            self.preset_blurb.setText(PRESET_BLURB[preset])
             # A profile being active is mutually exclusive with a preset
-            # button looking selected (see _on_preset / load_selected_profile) -
-            # only highlight the button when nothing was last shown via the
-            # profile combo instead.
+            # button looking selected (see _on_preset / load_selected_profile).
             if has_profile:
+                self.preset_blurb.setText(PRESET_BLURB[preset])
                 checked_button = self.preset_group.checkedButton()
                 if checked_button is not None:
                     checked_button.setChecked(False)
-            else:
-                button = self.preset_group.button(PRESETS.index(preset))
-                if button is not None:
-                    button.setChecked(True)
         for key, box in self.checkboxes.items():
             if isinstance(saved.get(key), bool):
                 box.setChecked(saved[key])
@@ -2733,6 +2856,7 @@ class MainWindow(QMainWindow):
         try:
             base_rec = recommend(
                 self.db, self.profile, self.current_target(),
+                windows_state=self.windows_state,
                 overrides=self.setting_overrides, cfg_overrides=self.cfg_overrides,
             )
             comparison = compare.from_paths(
@@ -2757,6 +2881,7 @@ class MainWindow(QMainWindow):
         )
         self.rec = recommend(
             self.db, self.profile, self.current_target(), install_drive_media=media,
+            windows_state=self.windows_state,
             overrides=self.setting_overrides, cfg_overrides=self.cfg_overrides,
         )
         self.comparison = compare.from_paths(
@@ -3196,6 +3321,13 @@ class MainWindow(QMainWindow):
         target.write_text(content, encoding="utf-8")
         self.statusBar().showMessage(f"Diagnostics written to {target}")
         QMessageBox.information(self, "Diagnostics exported", str(target))
+
+    def copy_hardware_spec(self) -> None:
+        """Short and safe to paste in public, unlike Export diagnostics above
+        (paths, security state) - see diagnostics.hardware_spec_text."""
+        text = diagnostics.hardware_spec_text(self.profile, self.game)
+        QApplication.clipboard().setText(text)
+        self.statusBar().showMessage("Hardware spec copied to clipboard.")
 
 
 def run() -> int:

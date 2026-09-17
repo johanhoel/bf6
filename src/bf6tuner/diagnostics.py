@@ -81,6 +81,46 @@ def _db_match_line(entry: dict[str, Any] | None, kind: str) -> str:
     return f"{kind}: not found in database - using the fallback heuristic"
 
 
+def hardware_spec_text(profile: HardwareProfile, game: GamePaths) -> str:
+    """A short, plain-text hardware summary meant to be pasted somewhere -
+    Discord, a forum post, asking someone for advice. Deliberately narrower
+    than build_report() above: no file paths, no security state, just the
+    machine itself, so it's safe to paste in public without a second look."""
+    lines: list[str] = []
+    add = lines.append
+
+    topology = f"{profile.cores}C/{profile.threads}T"
+    if profile.hybrid:
+        topology += f" ({profile.p_cores}P+{profile.e_cores}E)"
+    add(f"CPU: {profile.cpu_name} ({topology})")
+
+    add(
+        f"GPU: {profile.gpu_name} - {profile.vram_gb:g} GB VRAM"
+        + (f", driver {profile.driver_version}" if profile.driver_version else "")
+    )
+
+    modules = len(profile.ram_sticks) or None
+    channel = "single-channel" if profile.single_channel else "dual/multi-channel"
+    add(
+        f"RAM: {profile.ram_gb:g} GB @ {profile.ram_speed_mts} MT/s"
+        + (f", {modules} module(s), {channel}" if modules else "")
+    )
+
+    add(
+        f"Display: {profile.resolution} @ {profile.refresh_hz} Hz"
+        + (f" (panel up to {profile.max_refresh_hz} Hz)" if profile.max_refresh_hz > profile.refresh_hz else "")
+        + (", HDR" if profile.hdr_display else "")
+    )
+
+    add(f"OS: {profile.os_name or 'Windows'}" + (f" (build {profile.os_build})" if profile.os_build else ""))
+
+    if game.install_drive:
+        media = profile.drive_media.get(game.install_drive)
+        add(f"Storage: Battlefield 6 on drive {game.install_drive}:" + (f" ({media})" if media else ""))
+
+    return "\n".join(lines)
+
+
 def build_report(
     profile: HardwareProfile,
     rec: Recommendation | None,

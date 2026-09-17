@@ -110,3 +110,20 @@ def test_report_never_omits_the_share_caution(db):
         local_commit="abc1234",
     )
     assert "review before sharing this outside your own machine" in report
+
+
+def test_hardware_spec_text_covers_the_machine_but_no_paths():
+    profile = make_profile(hybrid=True, p_cores=6, e_cores=8, cores=14, threads=20)
+    game = GamePaths(install_dir=Path("D:/Games/Battlefield 6"))
+    spec = diagnostics.hardware_spec_text(profile, game)
+    assert "AMD Ryzen 7 9850X3D" in spec
+    assert "6P+8E" in spec
+    assert "RTX 5090" in spec
+    assert "5120x1440" in spec
+    assert "Windows 11 Pro" in spec
+    assert str(game.install_dir) not in spec
+
+
+def test_hardware_spec_text_never_crashes_without_a_located_install(db):
+    spec = diagnostics.hardware_spec_text(make_profile(), GamePaths())
+    assert "CPU:" in spec and "Storage:" not in spec

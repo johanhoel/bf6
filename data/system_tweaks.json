@@ -20,21 +20,11 @@
       "label": "Hardware-Accelerated GPU Scheduling",
       "scope": "windows",
       "trigger": {
-        "always": true
+        "hags_off": true
       },
       "severity": "medium",
-      "why": "HAGS moves frame queue management onto the GPU. It is a prerequisite for NVIDIA frame generation, and on modern GPUs it usually shaves a little latency. On older cards it has historically been a stutter source.",
-      "how": "Settings > System > Display > Graphics > Change default graphics settings > Hardware-accelerated GPU scheduling. Reboot after changing.",
-      "recommend_on_if": {
-        "gpu_arch_in": [
-          "ada",
-          "blackwell",
-          "rdna3",
-          "rdna3.5",
-          "rdna4",
-          "battlemage"
-        ]
-      },
+      "why": "Currently OFF on this machine. HAGS moves frame queue management onto the GPU. It is a prerequisite for NVIDIA frame generation, and on modern GPUs it usually shaves a little latency. On older cards it has historically been a stutter source.",
+      "how": "Settings > System > Display > Graphics > Change default graphics settings > Hardware-accelerated GPU scheduling > On. Reboot after changing.",
       "value": "Small but real. Test both ways with the frame time graph if you are chasing stutter."
     },
     {
@@ -42,14 +32,11 @@
       "label": "Windows Game Mode",
       "scope": "windows",
       "trigger": {
-        "always": true
+        "game_mode_off": true
       },
       "severity": "low",
-      "why": "Game Mode suppresses background scheduled work while a game is in the foreground. On hybrid Intel CPUs it also feeds the Thread Director, which is the mechanism that decides what runs on P-cores versus E-cores — the same mechanism the User.cfg thread-count trick fights against.",
+      "why": "Currently OFF on this machine. Game Mode suppresses background scheduled work while a game is in the foreground. On hybrid Intel CPUs it also feeds the Thread Director, which is the mechanism that decides what runs on P-cores versus E-cores — the same mechanism the User.cfg thread-count trick fights against.",
       "how": "Settings > Gaming > Game Mode > On.",
-      "recommend_on_if": {
-        "always": true
-      },
       "value": "Leave it on. Particularly important on hybrid CPUs."
     },
     {
@@ -57,10 +44,10 @@
       "label": "Power plan set to High Performance / Balanced with minimum processor state raised",
       "scope": "windows",
       "trigger": {
-        "always": true
+        "power_plan_not_high_perf": true
       },
       "severity": "low",
-      "why": "Aggressive core parking and slow clock ramping show up as micro-stutter at the start of a firefight, precisely when frame time consistency matters.",
+      "why": "Currently on \"{power_plan_name}\". Aggressive core parking and slow clock ramping show up as micro-stutter at the start of a firefight, precisely when frame time consistency matters.",
       "how": "Control Panel > Power Options > High performance. On a laptop, plug it in and set the Windows power slider to Best Performance.",
       "value": "Minor on desktops with modern firmware; noticeable on laptops."
     },
@@ -175,10 +162,10 @@
       "label": "Disable fullscreen optimisations for the game executable",
       "scope": "windows",
       "trigger": {
-        "always": true
+        "fullscreen_opts_enabled": true
       },
       "severity": "low",
-      "why": "Windows can silently substitute a borderless composited path for true exclusive fullscreen, adding a frame of latency.",
+      "why": "Not currently disabled for this game's executable. Windows can silently substitute a borderless composited path for true exclusive fullscreen, adding a frame of latency.",
       "how": "Right-click the Battlefield 6 executable > Properties > Compatibility > tick 'Disable fullscreen optimisations'.",
       "value": "Small latency win; occasionally fixes VRR not engaging."
     },
@@ -187,10 +174,10 @@
       "label": "Trim overlays",
       "scope": "windows",
       "trigger": {
-        "always": true
+        "overlays_running": true
       },
       "severity": "low",
-      "why": "Discord, Steam, GeForce Experience, MSI Afterburner/RTSS and browser hardware acceleration all hook the presentation path. Stacking several of them is a well-known source of stutter and of the crashes people then blame on the game.",
+      "why": "Currently running: {overlay_list}. Each one hooks the presentation path; stacking several of them is a well-known source of stutter and of the crashes people then blame on the game.",
       "how": "Keep at most one overlay running. If you are diagnosing stutter, turn all of them off first and add them back one at a time.",
       "value": "Free, and it is genuinely the first thing to try when frame times are spiky."
     }

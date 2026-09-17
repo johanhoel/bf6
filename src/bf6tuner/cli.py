@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 from . import APP_NAME, __version__
-from . import compare, database, hardware, paths, writer
+from . import compare, database, hardware, paths, system_state, writer
 from .engine import PRESETS, Target, recommend
 
 
@@ -126,7 +126,8 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     media = game.install_drive and profile.drive_media.get(game.install_drive)
-    rec = recommend(db, profile, target, install_drive_media=media)
+    windows_state = system_state.detect(game.executable)
+    rec = recommend(db, profile, target, install_drive_media=media, windows_state=windows_state)
 
     if args.print_cfg:
         sys.stdout.write(writer.render_user_cfg(rec).replace("\r\n", "\n"))

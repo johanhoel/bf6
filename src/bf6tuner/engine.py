@@ -30,6 +30,7 @@ from typing import Any
 from .costs import UPSCALE_COST, cost_for, frame_time
 from .database import Database
 from .hardware import HardwareProfile
+from .system_state import WindowsState
 
 PRESETS = ("esports", "competitive", "balanced", "quality")
 
@@ -623,8 +624,9 @@ def _build_cfg(
 
 def _evaluate_tweaks(
     db: Database, profile: HardwareProfile, gpu: dict[str, Any], cpu: dict[str, Any],
-    install_drive_media: str | None,
+    install_drive_media: str | None, windows_state: WindowsState | None,
 ) -> list[dict[str, Any]]:
+    win = windows_state or WindowsState()
     active: list[dict[str, Any]] = []
     for tweak in db.tweaks:
         trigger = tweak.get("trigger", {})
@@ -647,6 +649,19 @@ def _evaluate_tweaks(
             fires = fires or (install_drive_media or "").upper() == "HDD"
         if "gpu_arch_in" in trigger:
             fires = fires or gpu.get("arch") in trigger["gpu_arch_in"]
+        # Real detected Windows state, not a blanket "always" - see
+        # system_state.py. A check that could not be answered (None) never
+        # fires: don't nag about something we don't actually know is wrong.
+        if trigger.get("hags_off"):
+            fires = fires or win.hags_enabled is False
+        if trigger.get("game_mode_off"):
+            fires = fires or win.game_mode_enabled is False
+        if trigger.get("power_plan_not_high_perf"):
+            fires = fires or win.power_plan_high_performance is False
+        if trigger.get("fullscreen_opts_enabled"):
+            fires = fires or win.fullscreen_opts_disabled_for_game is False
+        if trigger.get("overlays_running"):
+            fires = fires or bool(win.overlay_processes)
         if not fires:
             continue
 
@@ -658,6 +673,8 @@ def _evaluate_tweaks(
             "{ram_gb}": f"{profile.ram_gb:g}",
             "{vram}": f"{profile.vram_gb:g}",
             "{driver_version}": profile.driver_version or "unknown",
+            "{power_plan_name}": win.power_plan_name or "an unrecognised plan",
+            "{overlay_list}": ", ".join(win.overlay_processes),
         }
         for key in ("why", "how"):
             text = rendered.get(key, "")
@@ -741,6 +758,7 @@ def _coerce_cfg_override(command: dict[str, Any], value: Any) -> Any:
 def recommend(
     db: Database, profile: HardwareProfile, target: Target,
     install_drive_media: str | None = None,
+    windows_state: WindowsState | None = None,
     overrides: dict[str, Any] | None = None,
     cfg_overrides: dict[str, Any] | None = None,
 ) -> Recommendation:
@@ -1004,6 +1022,6 @@ def recommend(
         upscaler_mode=upscaler, upscaler_tech=_upscaler_tech(gpu), quality_step=step,
         settings=settings, cfg=cfg_lines, warnings=warnings, overrides=applied,
         cfg_overrides=applied_cfg,
-        tweaks=_evaluate_tweaks(db, profile, gpu, cpu, install_drive_media),
+        tweaks=_evaluate_tweaks(db, profile, gpu, cpu, install_drive_media, windows_state),
         headroom_note=headroom,
     )
