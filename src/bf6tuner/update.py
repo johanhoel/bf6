@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
+import ssl
 import subprocess
 import sys
 import urllib.error
@@ -43,6 +44,8 @@ import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+import certifi
 
 REPO = "johanhoel/bf6"
 BRANCH = "main"
@@ -121,12 +124,30 @@ def local_commit() -> str:
         return ""
 
 
+def _urlopen(request: urllib.request.Request, timeout: float):
+    """Falls back to certifi's own CA bundle if the local/OS certificate
+    store can't complete the chain - the exact "unable to get local issuer
+    certificate" failure some Windows machines hit with an out-of-date or
+    incomplete root store (unlike requests/urllib3, plain urllib does not
+    use certifi by default, so this app was more exposed to it than most).
+    Tries the system defaults first, not certifi first: that still honours
+    a legitimate local addition, such as a corporate proxy's own inspection
+    root already installed by IT, rather than second-guessing it."""
+    try:
+        return urllib.request.urlopen(request, timeout=timeout)  # noqa: S310
+    except urllib.error.URLError as exc:
+        if not isinstance(exc.reason, ssl.SSLCertVerificationError):
+            raise
+        context = ssl.create_default_context(cafile=certifi.where())
+        return urllib.request.urlopen(request, timeout=timeout, context=context)  # noqa: S310
+
+
 def _get_json(url: str, timeout: float) -> Any:
     request = urllib.request.Request(url, headers={
         "Accept": "application/vnd.github+json",
         "User-Agent": _USER_AGENT,
     })
-    with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+    with _urlopen(request, timeout) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
@@ -180,6 +201,16 @@ def _friendly_error(exc: Exception) -> str:
                 "unauthenticated request from this network, not just this app." + when +
                 " This clears on its own; no action needed."
             )
+    if isinstance(exc, urllib.error.URLError) and isinstance(exc.reason, ssl.SSLCertVerificationError):
+        # Only reached if certifi's own bundle (see _urlopen) also failed to
+        # verify GitHub's certificate - a plain out-of-date OS root store
+        # would have already been fixed by that fallback.
+        return (
+            "Could not verify GitHub's certificate, even against this app's own bundled "
+            "root certificates. This usually means antivirus or a corporate network is "
+            "intercepting HTTPS traffic with a certificate this app doesn't trust, or the "
+            "system clock is wrong (certificate checks fail if the date is off)."
+        )
     return str(exc)
 
 
@@ -290,10 +321,10 @@ def download_update(dest: Path, timeout: float = 60.0) -> Path:
 
     request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+        with _urlopen(request, timeout) as response:
             data = response.read()
     except Exception as exc:
-        raise SelfUpdateError(f"Download failed: {exc}") from exc
+        raise SelfUpdateError(f"Download failed: {_friendly_error(exc)}") from exc
 
     if len(data) < 1_000_000 or data[:2] != b"MZ":
         raise SelfUpdateError(

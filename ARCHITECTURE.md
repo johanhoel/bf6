@@ -366,6 +366,49 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-09-18 (59) — Fixed "check for updates" CERTIFICATE_VERIFY_FAILED for some users
+
+User reported some users hit `<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED]
+certificate verify failed: unable to get local issuer certificate>` on
+"Check for updates" - the app already degrades this gracefully (a friendly
+dialog plus the manual GitHub link, never a crash, per `check_for_update()`'s
+own "never raises" contract), but the underlying check itself was genuinely
+failing for those users, not just displaying the error nicely.
+
+Root cause: `update.py` uses plain `urllib.request`, which - unlike
+`requests`/`urllib3` - does **not** fall back to the bundled `certifi` CA
+bundle; it only trusts whatever the OS's own certificate store resolves to.
+An out-of-date or incomplete Windows root store (common on machines that
+rarely run Windows Update, since that's what actually refreshes it, not a
+Python/pip install) produces exactly this error, and this app's use of raw
+`urllib` was more exposed to it than most.
+
+- New `certifi` dependency (added to `requirements.txt`; PyInstaller has
+  bundled a `certifi` hook for years, so no `bf6tuner.spec` change was
+  needed - it already picks up the import and copies `cacert.pem` in).
+- New `update._urlopen()` wraps every `urlopen` call (both `_get_json` and
+  `download_update`): tries the system/OS default certificate handling
+  first - deliberately not certifi first, so a legitimate local addition
+  (e.g. a corporate proxy's own inspection root already installed by IT)
+  is still honoured - and only on an actual `ssl.SSLCertVerificationError`
+  retries once against `certifi.where()`'s bundle. Covers the common "OS
+  root store is stale" case without weakening verification anywhere: both
+  attempts still fully verify the chain, just against two different trusted
+  root sets.
+- `_friendly_error()` gained a specific message for the case where *even*
+  certifi's bundle fails to verify - at that point it's genuinely likely
+  antivirus/corporate HTTPS interception with an untrusted certificate, or
+  a wrong system clock, and says so instead of surfacing the raw
+  `<urlopen error ...>` text the user actually saw.
+- 3 new tests in `test_update.py`: the new friendly-error wording, the
+  fallback actually retrying with certifi's context on a cert-verification
+  failure, and confirming an unrelated `URLError` (e.g. a real timeout)
+  still propagates rather than being swallowed. 257 tests pass (254 + 3).
+  Verified live against the real GitHub API on this machine (the normal,
+  non-fallback path) - the fallback path itself needs a machine with a
+  genuinely broken root store to see fire for real, which none available
+  here have.
+
 ### 2026-09-17 (58) — BF6's real orange/black, and Battlefield deploy-screen panel language
 
 User asked for the UI to look like it's actually part of Battlefield 6,

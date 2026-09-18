@@ -113,6 +113,56 @@ def test_friendly_error_ignores_a_403_that_is_not_the_rate_limit():
     assert "access denied" in message.lower()
 
 
+def test_friendly_error_explains_a_certificate_verification_failure():
+    import ssl
+    import urllib.error
+
+    exc = urllib.error.URLError(ssl.SSLCertVerificationError(
+        "certificate verify failed: unable to get local issuer certificate"
+    ))
+    message = update._friendly_error(exc)
+    assert "certificate" in message.lower()
+    assert "clock" in message.lower()
+
+
+def test_urlopen_falls_back_to_certifi_when_the_os_store_cant_verify(monkeypatch):
+    """The exact failure some Windows machines hit ('unable to get local
+    issuer certificate') - plain urllib, unlike requests, doesn't try
+    certifi's bundle on its own, so this app has to do it explicitly."""
+    import ssl
+    import urllib.error
+    import urllib.request
+
+    calls = []
+
+    def fake_urlopen(request, timeout=None, context=None):
+        calls.append(context)
+        if context is None:
+            raise urllib.error.URLError(ssl.SSLCertVerificationError("unable to get local issuer certificate"))
+        return "opened-with-certifi"
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    result = update._urlopen(urllib.request.Request("https://example.invalid"), timeout=1.0)
+    assert result == "opened-with-certifi"
+    assert calls == [None, calls[1]]  # first attempt with no context, second with one
+
+
+def test_urlopen_does_not_swallow_an_unrelated_url_error(monkeypatch):
+    import urllib.error
+    import urllib.request
+
+    def fake_urlopen(request, timeout=None, context=None):
+        raise urllib.error.URLError("timed out")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    try:
+        update._urlopen(urllib.request.Request("https://example.invalid"), timeout=1.0)
+    except urllib.error.URLError as exc:
+        assert exc.reason == "timed out"
+    else:
+        raise AssertionError("expected URLError to propagate")
+
+
 # -- self-update: asset lookup (pure) ----------------------------------------
 
 def _release_payload(*assets: tuple[str, str]) -> dict:
