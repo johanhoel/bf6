@@ -408,6 +408,23 @@ Python/pip install) produces exactly this error, and this app's use of raw
   non-fallback path) - the fallback path itself needs a machine with a
   genuinely broken root store to see fire for real, which none available
   here have.
+- **Follow-up, same session**: the push above (424274a) failed CI - not on
+  Windows, on the `Tests (Linux)` job, in 7 seconds. Cause: that job's
+  dependency install (`.github/workflows/build.yml`) has always been
+  deliberately minimal (`pip install pytest`, not `-r requirements.txt` -
+  it only runs the pure-logic tests, never imports PySide6) and the new
+  top-level `import certifi` in `update.py` broke `from bf6tuner import
+  update` there, since certifi was never installed on that job at all.
+  Passed locally because this machine already had certifi installed from
+  testing the fix by hand. Fixed by adding `certifi` to that job's install
+  line - it's small and pure-Python, unlike PySide6, so listing it there
+  doesn't compromise why that job stays minimal. Re-verified this time in
+  an actually-isolated venv (pytest + certifi only, no PySide6) before
+  pushing again, rather than trusting the main dev environment's installed
+  packages a second time. Also tightened one of the 3 new tests -
+  `assert calls == [None, calls[1]]` was comparing a value to itself and
+  so could never fail regardless of what the second call actually was;
+  now asserts it's a real `ssl.SSLContext`.
 
 ### 2026-09-17 (58) — BF6's real orange/black, and Battlefield deploy-screen panel language
 

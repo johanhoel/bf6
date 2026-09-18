@@ -144,7 +144,9 @@ def test_urlopen_falls_back_to_certifi_when_the_os_store_cant_verify(monkeypatch
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
     result = update._urlopen(urllib.request.Request("https://example.invalid"), timeout=1.0)
     assert result == "opened-with-certifi"
-    assert calls == [None, calls[1]]  # first attempt with no context, second with one
+    assert len(calls) == 2
+    assert calls[0] is None  # first attempt: system/OS defaults
+    assert isinstance(calls[1], ssl.SSLContext)  # second attempt: certifi's own bundle
 
 
 def test_urlopen_does_not_swallow_an_unrelated_url_error(monkeypatch):
