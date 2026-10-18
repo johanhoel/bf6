@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 from . import APP_NAME, __version__
-from . import compare, database, hardware, paths, prefs, system_state, writer
+from . import compare, database, hardware, paths, prefs, profile_audit, system_state, writer
 from .engine import PRESETS, Target, recommend
 
 
@@ -137,11 +137,24 @@ def main(argv: list[str] | None = None) -> int:
         db, rec, game.profsave, game.user_cfg
     )
 
-    print(writer.render_report(rec, comparison))
+    # Flag settings keys a game update added - read from the profile itself,
+    # not from patch notes. See profile_audit.py.
+    key_audit = None
+    if game.profsave and game.profsave.is_file():
+        try:
+            key_audit, key_history = profile_audit.audit(
+                db, game.profsave.read_text(encoding="utf-8", errors="ignore"),
+                prefs.load_profile_key_history(),
+            )
+            prefs.save_profile_key_history(key_history)
+        except (OSError, ValueError) as exc:
+            print(f"(Could not check the profile for new settings keys: {exc})", file=sys.stderr)
+
+    print(writer.render_report(rec, comparison, key_audit))
 
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
-        args.report.write_text(writer.render_report(rec, comparison), encoding="utf-8")
+        args.report.write_text(writer.render_report(rec, comparison, key_audit), encoding="utf-8")
         print(f"Report written to {args.report}")
     if args.json_out:
         args.json_out.parent.mkdir(parents=True, exist_ok=True)

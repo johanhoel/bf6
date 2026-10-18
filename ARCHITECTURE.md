@@ -66,6 +66,16 @@ database.load()  ───┘         (matching,            │            └�
 - **`prefs.py`** — persisted user preferences: manual path overrides,
   per-setting overrides, and per-cfg-line overrides, all in
   `%APPDATA%\BF6Tuner\`.
+- **`profile_audit.py`** — reports settings keys present in the user's
+  real `PROFSAVE_profile` that the app has never seen, i.e. what a game update
+  added. Two signals: on a first scan, keys absent from
+  `data/profile_key_baseline.json` (a real pre-Season-5 profile) *within the
+  key families that capture covers*; on every later scan, keys new since the
+  machine's own previous scan (history in `prefs.py`'s
+  `profile_keys_seen.json`). `audit()` is pure - it returns the updated
+  history rather than saving it, because the GUI recomputes constantly and
+  saving on each recompute would make a just-reported key "seen" and the
+  report would vanish. See entry (60).
 - **`icon.py`** — the app's reticle icon, drawn pixel-by-pixel in pure Python
   (no image library). Shared by `packaging/make_icon.py` (writes the .ico
   baked into the .exe) and `ui/app.py`'s `app_icon()` (renders the same
@@ -365,6 +375,84 @@ tests as of the last README update).
 
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
+
+### 2026-10-18 (60) — Season 5 check, and detecting new settings keys from the profile itself
+
+User asked: check what's new in Battlefield 6 Season 5 and add those configs.
+
+**What Season 5 actually changed (game update 2.1.1.0, "Siege of Vegas",
+released 2026-10-13).** Researched from search-result summaries only - every
+primary source (ea.com, forums.ea.com, dsogaming, insider-gaming, gamerant,
+games.gg, twistedvoxel, bf6balancelog) was unreachable from the cloud session
+that did this work (WebFetch could not resolve them; the shell proxy refused
+them with 403), so nothing below was read first-hand. Across every summary,
+2.1.1.0 added **no new graphics, display, audio or `User.cfg` options**. The
+settings-relevant items were all controller/UI-side:
+
+- a hidden controller analogue-stick deadzone buffer removed, so a 0 deadzone
+  is now a true 0 (one EA forum post three days after release claims the
+  opposite - a new ~4-5% floor - so even this is disputed);
+- gamepad recoil compensation reduced from 11% to 5% (a tuning value, not an
+  option);
+- a typo fixed in "ADS Dispersion Crosshair Opacity", the "Infantry Sprint"
+  option's text changed, a blank "Controller Blueprint" screen fixed;
+- Spectator Mode now remembers the last camera view.
+
+**Nothing was added to the settings database for these, deliberately.** The
+real profile this project works from (`examples/PROFSAVEbf6mp_profile`)
+contains 195 keys and every one is `GstRender.*` or `GstAudio.*` - **zero**
+`GstInput.*` keys, so there is no confirmed key to map the deadzone change to.
+Inventing one from a patch-note sentence would break section 7's "never
+invent PROFSAVE keys" rule. If a future profile dump includes input keys,
+the deadzone change is worth a note on that setting: anyone who set 0
+relying on the old hidden buffer may now see stick drift on a worn controller.
+
+**What was built instead: the app now detects new keys itself.** Patch notes
+being an unreliable record of settings changes (as this round showed) is the
+real problem, so `profile_audit.py` reads the user's own profile and reports
+keys the app has never seen - exactly what a setting added by an update
+looks like. Design points worth keeping:
+
+- *The family limit on first scan is the whole point.* `profile_key_baseline.json`
+  is generated from the committed dump (169 keys after dropping 26
+  `ShaderBundleVersion_*` per-machine cache stamps) and records its own
+  `families` (`GstAudio`, `GstRender`). A key outside those families is never
+  reported on a first scan - the dump has no input keys, so "not in baseline"
+  says nothing about them, and reporting them would bury the one real signal
+  under every mouse and controller setting on the machine.
+- *History is the precise signal.* After the first scan, comparison is the
+  machine's file against its own previous scan (`prefs.profile_keys_seen.json`,
+  key -> first-seen date), across all families. Keys removed by an update stay
+  in history so they don't read as "new" if they come back.
+- *`GstKeyBinding.*` is always ignored*, alongside the shader stamps - bindings
+  are only written once their in-game page is visited (see `keybinds.py`), so
+  their appearance is not evidence of an update.
+- *`audit()` is pure and the GUI snapshots history once per window.* It runs
+  in `_on_detected` next to `_refresh_keybinds()`, not in `refresh()`, and
+  compares against the history as it stood when the window opened, so
+  re-detecting mid-session doesn't make a just-reported key disappear. Found
+  by a headless check, not by reasoning about it.
+- *Nothing it finds is ever written.* It only reports; each key needs a real
+  value from a real file before it becomes a setting.
+
+UI: a "New settings keys" card under the Summary on the Current vs
+recommended tab (count in the title, keys listed selectable in the `Mono`
+style, an explicit "not recommendations" line). The text report gains a
+`NEW SETTINGS KEYS` section, from both the GUI's Export report and the CLI;
+the CLI persists history the same way. Bundled and verified like
+`keybind_concepts.json` (`bf6tuner.spec`, `build.py verify_data`), not added to
+`database.DATASETS`.
+
+- 19 new tests (276 total, up from 257), including one that regenerates the
+  baseline from the dump and fails if they drift apart, and the ones that pin
+  the false-positive guards: input keys and key bindings are never reported as
+  new on a first scan. Headless UI check: card renders, survives a re-detect,
+  is quiet on the next launch with the same file, and catches a key added
+  after that.
+- **For the user to do:** launch BF6 after the Season 5 update, change any
+  video setting, Apply, quit, then re-detect in the app. The card then shows
+  what Season 5 really added to *their* profile, and that list is the right
+  input for the next database round.
 
 ### 2026-09-18 (59) — Fixed "check for updates" CERTIFICATE_VERIFY_FAILED for some users
 

@@ -339,8 +339,9 @@ refuses.
 
 ## The database
 
-Five JSON datasets under `data/`, bundled as plain files at build time (see
-"About the database" above for why they aren't encrypted):
+Five core JSON datasets under `data/`, plus two supporting files (key-binding
+decode data and the profile key baseline), all bundled as plain files at build
+time (see "About the database" above for why they aren't encrypted):
 
 | File | Contents |
 |---|---|
@@ -350,6 +351,29 @@ Five JSON datasets under `data/`, bundled as plain files at build time (see
 | `ingame_settings.json` | 54 in-game settings with per-preset values, VRAM gates, a per-option **cost curve** in percent of frame time, and **directional pros and cons** for raising or lowering each one. 4 are marked `confidence: unverified` — view/LOD distance, weapon FOV, display mode, and camera shake are plausible additions never sourced from a confirmed profile, so none carry a profile key and none are ever written automatically. Sharpening, Reflection Quality, and Texture Filtering used to be on that list too, until a real profile confirmed their keys (`SharpnessSlider`/`ReflectionQuality`/`TextureFiltering`) and they were promoted to actually write. Also confirmed from a real profile: Undergrowth Quality and Significance Quality (CPU/GPU-saving additions), the background/menu frame-rate-limiter family (recommended on unconditionally since it only ever throttles the game while tabbed out or in a menu), a separate Screen Space Reflections toggle, Vehicle Field of View, two never-written FOV-scale toggles, and a Dynamic Resolution Scaling family (Resolution Scale, DRS enable/floor/target — the target is computed to always match Frame Rate Limit) |
 | `system_tweaks.json` | 14 OS/BIOS/driver checks with trigger conditions |
 | `keybind_concepts.json` | Key-binding decode data — see "Key bindings" below |
+| `profile_key_baseline.json` | Every settings key in a real profile captured before Season 5 — the reference for "New settings keys" below |
+
+### New settings keys after a game update
+
+Seasons add settings, and patch notes are an unreliable record of it. So rather
+than chase each season's notes, the app reads your own `PROFSAVE_profile` and
+tells you when it contains a settings key it has never seen — which is exactly
+what a setting added by an update looks like. It appears as a **New settings
+keys** card on the Current vs recommended tab, and in exported reports.
+
+- **First run:** keys missing from a real profile captured before Season 5
+  (`profile_key_baseline.json`), limited to the key families that capture
+  contains. That limit is deliberate — the capture has no mouse or controller
+  keys, so without it every input setting on your machine would be wrongly
+  reported as new.
+- **Every run after that:** keys that appeared since the last scan of *your*
+  file, with the date each was first seen. The file compared with itself is the
+  precise signal, and it covers every key family.
+
+Nothing found this way is written. A key showing up means "the game stores
+something this app does not model yet" — it gets added to the database once its
+real values are confirmed, not guessed from its name. History lives in
+`%APPDATA%\BF6Tuner\profile_keys_seen.json`; delete it to start a fresh baseline.
 
 Commands are marked `legacy` when they are real Frostbite console variables from
 BF3/BF4/BFV that may be silent no-ops in BF6. Those are excluded by default
@@ -400,7 +424,7 @@ only thing that needs changing.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests -q          # 239 tests
+python -m pytest tests -q          # 276 tests
 PYTHONPATH=src python -m bf6tuner --preset competitive   # CLI, runs on Linux too
 ```
 

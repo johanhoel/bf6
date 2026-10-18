@@ -21,6 +21,7 @@ from .engine import Recommendation
 
 if TYPE_CHECKING:  # compare imports this module, so keep the runtime edge one-way
     from .compare import Comparison
+    from .profile_audit import ProfileAudit
 
 MARKER_BEGIN = "# ---- BF6 Tuner: generated block, safe to delete ----"
 MARKER_END = "# ---- end BF6 Tuner block ----"
@@ -486,7 +487,10 @@ def render_comparison(comparison: "Comparison") -> str:
 # Human-readable report
 # --------------------------------------------------------------------------
 
-def render_report(rec: Recommendation, comparison: "Comparison | None" = None) -> str:
+def render_report(
+    rec: Recommendation, comparison: "Comparison | None" = None,
+    audit: "ProfileAudit | None" = None,
+) -> str:
     p = rec.profile
     lines: list[str] = []
     add = lines.append
@@ -537,6 +541,13 @@ def render_report(rec: Recommendation, comparison: "Comparison | None" = None) -
 
     if comparison is not None:
         for line in render_comparison(comparison).splitlines():
+            add(line)
+        add("")
+
+    if audit is not None:
+        from .profile_audit import render as render_audit
+
+        for line in render_audit(audit).splitlines():
             add(line)
         add("")
 

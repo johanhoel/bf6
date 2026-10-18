@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import APP_NAME, __version__
-from .. import benchmark, compare, database, diagnostics, hardware, icon, keybinds, paths, prefs, system_state, update, writer
+from .. import benchmark, compare, database, diagnostics, hardware, icon, keybinds, paths, prefs, profile_audit, system_state, update, writer
 from ..engine import LINKED_CFG_KEYS, PRESETS, Recommendation, Target, recommend
 from . import theme
 from .cut_corner_frame import CutCornerCard
@@ -285,6 +285,12 @@ class MainWindow(QMainWindow):
         self.game = paths.GamePaths()
         self.rec: Recommendation | None = None
         self.comparison: compare.Comparison | None = None
+        self.profile_audit: profile_audit.ProfileAudit | None = None
+        # The key history as it stood when this window opened. Re-detecting
+        # compares against this snapshot rather than the freshly saved file,
+        # otherwise a key reported on the first scan would count as "seen" by
+        # the second and the report would silently disappear mid-session.
+        self._key_history_snapshot: dict | None = None
         self.setting_overrides: dict = prefs.load_setting_overrides()
         self._setting_editors: dict[str, QWidget] = {}
         self._setting_rows: dict[str, int] = {}
@@ -2619,7 +2625,55 @@ class MainWindow(QMainWindow):
             "Hardware detected." if p.detected else "Using a sample profile - detection unavailable here."
         )
         self._refresh_keybinds()
+        self._refresh_profile_audit()
         self.refresh()
+
+    def _refresh_profile_audit(self) -> None:
+        """Check the real profile for settings keys a game update added.
+
+        Runs when the game paths (re)detect, not on every refresh(): it
+        depends only on the file, and it persists history, which must not
+        happen on every recompute. See profile_audit.py.
+        """
+        self.profile_audit = None
+        if not self.game.profsave or not self.game.profsave.is_file():
+            return
+        if self._key_history_snapshot is None:
+            self._key_history_snapshot = prefs.load_profile_key_history()
+        try:
+            text = self.game.profsave.read_text(encoding="utf-8", errors="ignore")
+            result, updated = profile_audit.audit(self.db, text, self._key_history_snapshot)
+            prefs.save_profile_key_history(updated)
+        except Exception as exc:  # never let an informational check break detection
+            self.statusBar().showMessage(f"Could not check the profile for new settings keys: {exc}")
+            return
+        self.profile_audit = result
+
+    def _profile_audit_card(self) -> QWidget | None:
+        result = self.profile_audit
+        if result is None:
+            return None
+        count = len(result.new_keys)
+        frame, inner = card(f"New settings keys ({count})" if count else "New settings keys")
+        headline = QLabel(result.headline)
+        headline.setWordWrap(True)
+        if count:
+            headline.setStyleSheet("font-weight: 600;")
+        inner.addWidget(headline)
+        if count:
+            listing = QLabel("\n".join(
+                f"{entry.key} = {entry.value or '(empty)'}" for entry in result.new_keys[:40]
+            ) + (f"\n... and {count - 40} more" if count > 40 else ""))
+            listing.setObjectName("Mono")
+            listing.setWordWrap(True)
+            listing.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            inner.addWidget(listing)
+            inner.addWidget(dim(
+                "Read from your own profile, not from patch notes - this is what the game "
+                "now stores. Nothing here is written: each key stays untouched until it is "
+                "confirmed and added to the app's settings database."
+            ))
+        return frame
 
     def _refresh_keybinds(self) -> None:
         """Populate the read-only Key Bindings tab from the real
@@ -3021,6 +3075,10 @@ class MainWindow(QMainWindow):
             summary_layout.addLayout(button_row)
         layout.addWidget(summary)
 
+        audit_card = self._profile_audit_card()
+        if audit_card is not None:
+            layout.addWidget(audit_card)
+
         for change in comparison.changes:
             layout.addWidget(self._change_card(change))
 
@@ -3320,7 +3378,7 @@ class MainWindow(QMainWindow):
         content = (
             writer.render_json(self.rec, self.comparison)
             if target.suffix.lower() == ".json"
-            else writer.render_report(self.rec, self.comparison)
+            else writer.render_report(self.rec, self.comparison, self.profile_audit)
         )
         target.write_text(content, encoding="utf-8")
         self.statusBar().showMessage(f"Report written to {target}")

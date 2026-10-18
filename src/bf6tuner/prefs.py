@@ -33,6 +33,7 @@ TARGET_FILE = "target.json"
 UPDATE_SKIP_FILE = "update_skip.json"
 HISTORY_FILE = "apply_history.json"
 HISTORY_LIMIT = 10
+PROFILE_KEYS_FILE = "profile_keys_seen.json"
 
 
 def config_dir() -> Path:
@@ -216,3 +217,16 @@ def record_applied_config(entry: dict[str, Any]) -> list[dict[str, Any]]:
 
 def clear_apply_history() -> None:
     _write(HISTORY_FILE, {"entries": []})
+
+
+# -- profile key history -------------------------------------------------------
+# Every PROFSAVE key this machine's profile has ever contained, with the date it
+# was first seen. profile_audit.py compares the current file against this to
+# report keys a game update added since the last scan - see that module.
+
+def load_profile_key_history() -> dict[str, Any]:
+    return _read(PROFILE_KEYS_FILE)
+
+
+def save_profile_key_history(values: dict[str, Any]) -> None:
+    _write(PROFILE_KEYS_FILE, values)
