@@ -1,6 +1,6 @@
 {
   "schema": "bf6tuner.ingame_settings/1",
-  "version": "2026.09.07.1",
+  "version": "2026.10.21.1",
   "profsave": {
     "paths": [
       "%USERPROFILE%\\Documents\\Battlefield 6\\settings\\PROFSAVE_profile",
@@ -2825,9 +2825,416 @@
           ]
         }
       }
+    },
+    {
+      "id": "zoom_sensitivity_coefficient",
+      "label": "Zoom Sensitivity Coefficient",
+      "menu": "Controls > Aiming",
+      "confidence": "unverified",
+      "type": "slider",
+      "min": 0,
+      "max": 200,
+      "unit": "",
+      "presets": {
+        "esports": 178,
+        "competitive": 178,
+        "balanced": 178,
+        "quality": 178
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Sets how aim sensitivity scales between hip-fire and each zoom level when Uniform Soldier Aiming is on. 178 matches screen distance on a 16:9 display and is the consensus value in Season 5 guides for both mouse and controller; 133 is the alternative some players prefer for close-range scopes. Unverified: taken from community Season 5 controller guides, not confirmed against a real BF6 profile (the reference dump has no GstInput keys), so it is never written automatically - set it by hand under Controls.",
+      "personal": true,
+      "tradeoff": {
+        "raise": {
+          "pros": [
+            "Scoped aim feels closer to hip-fire speed"
+          ],
+          "cons": [
+            "Can feel twitchy on high-magnification optics"
+          ]
+        },
+        "lower": {
+          "pros": [
+            "Slower, steadier aim on high zoom"
+          ],
+          "cons": [
+            "Same hand movement covers less screen at zoom, breaking muscle memory between optics"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ctrl_left_center_deadzone",
+      "label": "Left Stick Center Deadzone",
+      "menu": "Controls > Controller",
+      "confidence": "unverified",
+      "type": "slider",
+      "min": 0,
+      "max": 100,
+      "unit": "%",
+      "presets": {
+        "esports": 2,
+        "competitive": 2,
+        "balanced": 2,
+        "quality": 2
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Season 5 (2.1.1.0) removed a hidden deadzone buffer, so 0 now really means 0. Start at 2 and raise it one step at a time only if your character creeps with the stick untouched. Unverified: taken from community Season 5 controller guides, not confirmed against a real BF6 profile (the reference dump has no GstInput keys), so it is never written automatically - set it by hand under Controls.",
+      "personal": true,
+      "tradeoff": {
+        "raise": {
+          "pros": [
+            "Hides stick drift on a worn controller"
+          ],
+          "cons": [
+            "Movement starts later and feels less responsive"
+          ]
+        },
+        "lower": {
+          "pros": [
+            "Movement responds to the smallest stick input"
+          ],
+          "cons": [
+            "At 0 a worn stick can drift now that the hidden buffer is gone"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ctrl_left_axial_deadzone",
+      "label": "Left Stick Axial Deadzone",
+      "menu": "Controls > Controller",
+      "confidence": "unverified",
+      "type": "slider",
+      "min": 0,
+      "max": 100,
+      "unit": "%",
+      "presets": {
+        "esports": 6,
+        "competitive": 6,
+        "balanced": 6,
+        "quality": 6
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Ignores small sideways input while you push mostly forward, so sprinting and strafing stay straight. Season 5 guides converge on about 6 for the left stick. Unverified: taken from community Season 5 controller guides, not confirmed against a real BF6 profile (the reference dump has no GstInput keys), so it is never written automatically - set it by hand under Controls.",
+      "personal": true,
+      "tradeoff": {
+        "raise": {
+          "pros": [
+            "Straighter forward movement and sprint"
+          ],
+          "cons": [
+            "Fine diagonal strafes need a bigger push"
+          ]
+        },
+        "lower": {
+          "pros": [
+            "Finer diagonal movement control"
+          ],
+          "cons": [
+            "Forward movement can wobble off-line"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ctrl_left_max_input",
+      "label": "Left Stick Max Input Threshold",
+      "menu": "Controls > Controller",
+      "confidence": "unverified",
+      "type": "slider",
+      "min": 0,
+      "max": 100,
+      "unit": "%",
+      "presets": {
+        "esports": 100,
+        "competitive": 100,
+        "balanced": 100,
+        "quality": 100
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "How far the stick must travel to count as full input. 100 keeps the full range; some Season 5 guides drop the left stick to 80 so full sprint speed arrives with less push. Unverified: taken from community Season 5 controller guides, not confirmed against a real BF6 profile (the reference dump has no GstInput keys), so it is never written automatically - set it by hand under Controls.",
+      "personal": true,
+      "tradeoff": {
+        "raise": {
+          "pros": [
+            "Full stick range for fine movement speed"
+          ],
+          "cons": [
+            "Full speed needs the stick pushed all the way"
+          ]
+        },
+        "lower": {
+          "pros": [
+            "Full movement speed reached with less stick travel"
+          ],
+          "cons": [
+            "Less range left for walking speeds"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ctrl_right_center_deadzone",
+      "label": "Right Stick Center Deadzone",
+      "menu": "Controls > Controller",
+      "confidence": "unverified",
+      "type": "slider",
+      "min": 0,
+      "max": 100,
+      "unit": "%",
+      "presets": {
+        "esports": 2,
+        "competitive": 2,
+        "balanced": 2,
+        "quality": 2
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Same Season 5 change as the left stick: 0 is now a true 0. 2 is the common starting point - the lowest value at which most controllers stop the crosshair drifting by itself. Unverified: taken from community Season 5 controller guides, not confirmed against a real BF6 profile (the reference dump has no GstInput keys), so it is never written automatically - set it by hand under Controls.",
+      "personal": true,
+      "tradeoff": {
+        "raise": {
+          "pros": [
+            "Stops the crosshair drifting on a worn stick"
+          ],
+          "cons": [
+            "Small aim corrections are swallowed"
+          ]
+        },
+        "lower": {
+          "pros": [
+            "Tiny aim adjustments register immediately"
+          ],
+          "cons": [
+            "Crosshair can drift on its own if the stick is worn"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ctrl_right_axial_deadzone",
+      "label": "Right Stick Axial Deadzone",
+      "menu": "Controls > Controller",
+      "confidence": "unverified",
+      "type": "slider",
+      "min": 0,
+      "max": 100,
+      "unit": "%",
+      "presets": {
+        "esports": 6,
+        "competitive": 6,
+        "balanced": 6,
+        "quality": 6
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Ignores small vertical input while you track sideways (and the reverse), so horizontal tracking stays level. Season 5 guides put the right stick between 4 and 8; 6 is the middle of that range. Unverified: taken from community Season 5 controller guides, not confirmed against a real BF6 profile (the reference dump has no GstInput keys), so it is never written automatically - set it by hand under Controls.",
+      "personal": true,
+      "tradeoff": {
+        "raise": {
+          "pros": [
+            "Horizontal tracking stays level"
+          ],
+          "cons": [
+            "Small diagonal corrections are filtered out"
+          ]
+        },
+        "lower": {
+          "pros": [
+            "Smoother diagonal aim"
+          ],
+          "cons": [
+            "Sideways tracking picks up unintended vertical wobble"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ctrl_right_max_input",
+      "label": "Right Stick Max Input Threshold",
+      "menu": "Controls > Controller",
+      "confidence": "unverified",
+      "type": "slider",
+      "min": 0,
+      "max": 100,
+      "unit": "%",
+      "presets": {
+        "esports": 100,
+        "competitive": 100,
+        "balanced": 100,
+        "quality": 100
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Keep the right stick at 100 so the whole travel is available for aim speed; lowering it reaches full turn speed earlier but compresses the precise range. Unverified: taken from community Season 5 controller guides, not confirmed against a real BF6 profile (the reference dump has no GstInput keys), so it is never written automatically - set it by hand under Controls.",
+      "personal": true,
+      "tradeoff": {
+        "raise": {
+          "pros": [
+            "Full stick range for precise aim"
+          ],
+          "cons": [
+            "Full turn speed needs the stick fully pushed"
+          ]
+        },
+        "lower": {
+          "pros": [
+            "Full turn speed reached with less travel"
+          ],
+          "cons": [
+            "Less precision in the small-movement range"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ctrl_trigger_deadzone",
+      "label": "Trigger Deadzone (LT/RT)",
+      "menu": "Controls > Controller",
+      "confidence": "unverified",
+      "type": "slider",
+      "min": 0,
+      "max": 100,
+      "unit": "%",
+      "presets": {
+        "esports": 0,
+        "competitive": 0,
+        "balanced": 0,
+        "quality": 0
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "0 fires and aims the moment the trigger moves. Every current guide sets both triggers to 0 deadzone and 100 max input threshold. Unverified: taken from community Season 5 controller guides, not confirmed against a real BF6 profile (the reference dump has no GstInput keys), so it is never written automatically - set it by hand under Controls.",
+      "personal": true,
+      "tradeoff": {
+        "raise": {
+          "pros": [
+            "Protects against accidental fire from a resting finger"
+          ],
+          "cons": [
+            "Shots and ADS start later"
+          ]
+        },
+        "lower": {
+          "pros": [
+            "Fastest possible shot and ADS"
+          ],
+          "cons": [
+            "A light touch can fire"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ctrl_aim_assist",
+      "label": "Infantry Aim Assist",
+      "menu": "Controls > Controller",
+      "confidence": "unverified",
+      "type": "slider",
+      "min": 0,
+      "max": 100,
+      "unit": "%",
+      "presets": {
+        "esports": 100,
+        "competitive": 100,
+        "balanced": 100,
+        "quality": 100
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Aim assist is part of the controller balance - turning it down only removes help you are entitled to. Every guide sets it to 100, together with Aim Assist Slowdown at 100. Unverified: taken from community Season 5 controller guides, not confirmed against a real BF6 profile (the reference dump has no GstInput keys), so it is never written automatically - set it by hand under Controls.",
+      "personal": true,
+      "tradeoff": {
+        "raise": {
+          "pros": [
+            "Full rotational help on target"
+          ],
+          "cons": [
+            "Can tug you onto the wrong target in crowds"
+          ]
+        },
+        "lower": {
+          "pros": [
+            "Aim moves only where you push it"
+          ],
+          "cons": [
+            "Gives away an advantage the game balances controller play around"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ctrl_vibration",
+      "label": "Controller Vibration",
+      "menu": "Controls > Controller",
+      "confidence": "unverified",
+      "type": "bool",
+      "presets": {
+        "esports": 0,
+        "competitive": 0,
+        "balanced": 0,
+        "quality": 1
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Off for competitive play: rumble physically moves the sticks while you aim. Leave it on if you play for immersion. Unverified: taken from community Season 5 controller guides, not confirmed against a real BF6 profile (the reference dump has no GstInput keys), so it is never written automatically - set it by hand under Controls.",
+      "personal": true,
+      "tradeoff": {
+        "raise": {
+          "pros": [
+            "Physical feedback for hits, explosions and vehicles"
+          ],
+          "cons": [
+            "Shakes the sticks while you aim"
+          ]
+        },
+        "lower": {
+          "pros": [
+            "Steadier aim under fire"
+          ],
+          "cons": [
+            "Loses tactile feedback"
+          ]
+        }
+      }
     }
   ],
-  "unverified_settings_note": "A setting marked confidence: 'unverified' is a plausible addition based on common Frostbite/FPS conventions - proposed by BF6 Tuner's own tooling, not sourced from a confirmed BF6 profile dump or menu screenshot. Each one deliberately has no profsave_key, so it is never written to your profile automatically (see database.py/writer.py's 'never invent PROFSAVE keys' rule) - it only ever shows up as a recommendation with reasoning, for you to set by hand and verify. Promote an entry out of 'unverified' by confirming its real menu wording and PROFSAVE key against an actual game install, then add profsave_key and drop the confidence field.",
+  "unverified_settings_note": "A setting marked confidence: 'unverified' is a plausible addition based on common Frostbite/FPS conventions - proposed by BF6 Tuner's own tooling, not sourced from a confirmed BF6 profile dump or menu screenshot. Each one deliberately has no profsave_key, so it is never written to your profile automatically (see database.py/writer.py's 'never invent PROFSAVE keys' rule) - it only ever shows up as a recommendation with reasoning, for you to set by hand and verify. Promote an entry out of 'unverified' by confirming its real menu wording and PROFSAVE key against an actual game install, then add profsave_key and drop the confidence field. The controller entries and Zoom Sensitivity Coefficient come from community Season 5 guides rather than this app's own tooling, but the same rule applies: no profile key until a real profile shows one.",
   "cost_model": {
     "units": "Values are percent of total GPU or CPU frame time relative to the setting's baseline option, and GB for vram.",
     "baseline": "The option whose entry is all zeroes. For quality tiers that is normally 'High'.",

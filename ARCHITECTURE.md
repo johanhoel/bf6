@@ -376,6 +376,49 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-10-21 (61) — Season 5 controller and aiming settings, hand-set only
+
+User asked to add the configuration missing compared with the YouTube video
+"NEW Best Settings for Battlefield 6 Season 5!" (youtu.be/GdkKgULOYtU).
+**The video itself was not watched** - YouTube is unreachable from the
+cloud session (proxy 403, WebFetch DNS failure). Its title and a search
+listing were all that came back, and the listing says it covers controller
+settings. The values were taken from search-result summaries of Season 5
+controller guides (one other Season 5 video, Dexerto, Dot Esports, Beebom,
+SCUF, Insider Gaming) where they agree. If the video recommends something
+different, change the presets; the structure doesn't need to move.
+
+Added ten settings to `ingame_settings.json` (64 total), all
+`confidence: "unverified"` with **no `profsave_key`**. The reference
+profile still has zero `GstInput.*` keys, so section 7's "never invent
+PROFSAVE keys" rule still applies. They show up as recommendations to set by
+hand, the same way as `weapon_fov`/`view_distance`:
+
+- `Controls > Aiming`: Zoom Sensitivity Coefficient 178 (133 mentioned as
+  the alternative);
+- `Controls > Controller`: left/right stick Center Deadzone 2, Axial
+  Deadzone 6, Max Input Threshold 100; Trigger Deadzone 0; Infantry Aim
+  Assist 100; Vibration off (on for the Quality preset).
+
+The center deadzones default to 2, not 0, because Season 5 removed the
+hidden deadzone buffer (entry 60): 0 is now a true 0 and drifts on a worn
+stick. Values are the same across presets except vibration, since none of
+these affect frame rate (zero cost, which is tested). Left out
+deliberately: Aim Assist Zoom Snap (guides split between 0 and 100) and
+per-player sensitivities (personal, like `mouse_sensitivity`). The detail
+pane's UNVERIFIED badge now says "from common Frostbite/FPS conventions or
+community guides", which is accurate for both kinds of entry.
+
+Twelve new tests in `test_engine.py` (288 total). They cover: each new
+setting is unverified, has no key, can be overridden and never reaches a
+profsave write; the new settings cost no frames; and the Season 5 defaults.
+To promote one: change it in game, then grep the saved `PROFSAVE_profile`
+for a `GstInput.*` key that moved. Note that `mouse_*`/`ads_sensitivity`
+already carry `GstInput.*` keys that the reference dump never confirmed.
+They pre-date this entry and are mostly `never_write`, but
+`mouse_acceleration` (`always: 0`) is worth re-checking against a profile
+that has input keys.
+
 ### 2026-10-18 (60) — Season 5 check, and detecting new settings keys from the profile itself
 
 User asked: check what's new in Battlefield 6 Season 5 and add those configs.

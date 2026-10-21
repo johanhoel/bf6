@@ -887,3 +887,54 @@ def test_newly_flagged_unverified_settings(db, setting_id, override_value):
     fake_key = f"GstRender.{setting_id}"
     plan = writer.profsave_plan(forced, {fake_key: "0"})
     assert all(key != fake_key for key, _, _ in plan)
+
+
+# -- Season 5 controller and aiming settings ---------------------------------
+# Added from community Season 5 guides. The reference profile has no
+# GstInput keys, so like the entries above these are hand-set only: they
+# must be recommended, overridable, and structurally unable to write.
+
+CONTROLLER_IDS = (
+    "zoom_sensitivity_coefficient",
+    "ctrl_left_center_deadzone", "ctrl_left_axial_deadzone", "ctrl_left_max_input",
+    "ctrl_right_center_deadzone", "ctrl_right_axial_deadzone", "ctrl_right_max_input",
+    "ctrl_trigger_deadzone", "ctrl_aim_assist", "ctrl_vibration",
+)
+
+
+@pytest.mark.parametrize("setting_id", CONTROLLER_IDS)
+def test_controller_settings_are_hand_set_only(db, setting_id):
+    setting = db.setting(setting_id)
+    assert setting["confidence"] == "unverified"
+    assert setting.get("profsave_key") is None
+    assert setting["menu"].startswith("Controls > ")
+    assert setting["tradeoff"]["raise"]["pros"] and setting["tradeoff"]["lower"]["cons"]
+
+    override = 1 if setting["type"] == "bool" else setting["min"] + 1
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       overrides={setting_id: override})
+    choice = next(c for c in forced.settings if c.setting_id == setting_id)
+    assert choice.overridden and choice.value == override
+
+    fake_key = f"GstInput.{setting_id}"
+    plan = writer.profsave_plan(forced, {fake_key: "0"})
+    assert all(key != fake_key for key, _, _ in plan)
+
+
+def test_controller_settings_cost_no_frames(db):
+    base = recommend(db, make_profile(), Target(preset="competitive"))
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       overrides={"ctrl_vibration": 1, "ctrl_right_center_deadzone": 20,
+                                  "zoom_sensitivity_coefficient": 133})
+    assert forced.predicted_fps == base.predicted_fps
+
+
+def test_season5_deadzone_defaults(db):
+    """Season 5 made 0 a true 0, so the stick deadzones start at 2, not 0."""
+    rec = recommend(db, make_profile(), Target(preset="esports"))
+    values = {c.setting_id: c.value for c in rec.settings}
+    assert values["ctrl_left_center_deadzone"] == 2
+    assert values["ctrl_right_center_deadzone"] == 2
+    assert values["ctrl_trigger_deadzone"] == 0
+    assert values["zoom_sensitivity_coefficient"] == 178
+    assert values["ctrl_vibration"] == 0

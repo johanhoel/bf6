@@ -2342,7 +2342,7 @@ class MainWindow(QMainWindow):
             parts.append(
                 f"<br><span style='color:{theme.WARN}; font-size:11px'>UNVERIFIED —</span>"
                 f"<span style='color:{theme.TEXT_DIM}; font-size:11px'> a plausible addition "
-                "based on common Frostbite/FPS conventions, not confirmed against a real BF6 "
+                "from common Frostbite/FPS conventions or community guides, not confirmed against a real BF6 "
                 "profile or menu. It has no profile key on purpose, so it is never written "
                 "automatically - set it by hand and treat the value below as a starting "
                 "point.</span>"
