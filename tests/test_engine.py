@@ -638,16 +638,16 @@ def test_main_frame_limiter_enable_is_confirmed_key_and_always_on(db):
     assert enable.profsave_key == "GstRender.FrameRateLimiterEnable"
 
 
-def test_undergrowth_quality_is_distinct_from_vegetation_quality(db):
-    """A real profile confirms GstRender.UndergrowthQuality and
-    GstRender.VegetationQuality are two separate keys, not the same slider
-    surfaced twice."""
+def test_undergrowth_quality_is_the_confirmed_ground_cover_key(db):
+    """The real profile has GstRender.UndergrowthQuality and no
+    VegetationQuality key at all - an earlier entry claimed both were
+    confirmed, which the committed dump does not support."""
     rec = recommend(db, make_profile(), Target(preset="balanced"))
     undergrowth = next(s for s in rec.settings if s.setting_id == "undergrowth_quality")
     vegetation = next(s for s in rec.settings if s.setting_id == "vegetation_quality")
     assert undergrowth.profsave_key == "GstRender.UndergrowthQuality"
-    assert vegetation.profsave_key == "GstRender.VegetationQuality"
-    assert undergrowth.profsave_key != vegetation.profsave_key
+    assert vegetation.profsave_key is None
+    assert db.setting("vegetation_quality")["confidence"] == "unverified"
 
 
 def test_significance_quality_has_confirmed_profsave_key(db):
@@ -778,11 +778,11 @@ def test_out_of_range_slider_override_is_clamped_before_it_reaches_profsave(db):
 
 # -- new CPU/GPU settings confirmed from the same real profile --------------
 
-def test_vegetation_and_undergrowth_and_reflection_and_ssr_are_distinct_keys(db):
-    """Four pairs the DB used to risk conflating - each confirmed as two
-    separate real keys, not one setting under two names."""
+def test_shadow_undergrowth_reflection_and_ssr_are_distinct_keys(db):
+    """Settings the DB could conflate - each confirmed as a separate real
+    key, not one setting under two names."""
     ids_and_keys = {
-        "vegetation_quality": "GstRender.VegetationQuality",
+        "sun_shadow_quality": "GstRender.SunShadowQuality",
         "undergrowth_quality": "GstRender.UndergrowthQuality",
         "reflection_quality": "GstRender.ReflectionQuality",
         "screen_space_reflections": "GstRender.ScreenSpaceReflections",
@@ -887,3 +887,188 @@ def test_newly_flagged_unverified_settings(db, setting_id, override_value):
     fake_key = f"GstRender.{setting_id}"
     plan = writer.profsave_plan(forced, {fake_key: "0"})
     assert all(key != fake_key for key, _, _ in plan)
+
+
+# -- Season 5 controller and aiming settings ---------------------------------
+# Added from community Season 5 guides. The reference profile has no
+# GstInput keys, so like the entries above these are hand-set only: they
+# must be recommended, overridable, and structurally unable to write.
+
+CONTROLLER_IDS = (
+    "zoom_sensitivity_coefficient",
+    "ctrl_left_center_deadzone", "ctrl_left_axial_deadzone", "ctrl_left_max_input",
+    "ctrl_right_center_deadzone", "ctrl_right_axial_deadzone", "ctrl_right_max_input",
+    "ctrl_trigger_deadzone", "ctrl_trigger_max_input",
+    "ctrl_aim_assist", "ctrl_aim_assist_slowdown", "ctrl_vibration",
+)
+
+
+@pytest.mark.parametrize("setting_id", CONTROLLER_IDS)
+def test_controller_settings_are_hand_set_only(db, setting_id):
+    setting = db.setting(setting_id)
+    assert setting["confidence"] == "unverified"
+    assert setting.get("profsave_key") is None
+    assert setting["menu"].startswith("Controls > ")
+    assert setting["tradeoff"]["raise"]["pros"] and setting["tradeoff"]["lower"]["cons"]
+
+    override = 1 if setting["type"] == "bool" else setting["min"] + 1
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       overrides={setting_id: override})
+    choice = next(c for c in forced.settings if c.setting_id == setting_id)
+    assert choice.overridden and choice.value == override
+
+    fake_key = f"GstInput.{setting_id}"
+    plan = writer.profsave_plan(forced, {fake_key: "0"})
+    assert all(key != fake_key for key, _, _ in plan)
+
+
+def test_controller_settings_cost_no_frames(db):
+    base = recommend(db, make_profile(), Target(preset="competitive"))
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       overrides={"ctrl_vibration": 1, "ctrl_right_center_deadzone": 20,
+                                  "zoom_sensitivity_coefficient": 133})
+    assert forced.predicted_fps == base.predicted_fps
+
+
+def test_season5_deadzone_defaults(db):
+    """Season 5 made 0 a true 0, so the stick deadzones start at 2, not 0."""
+    rec = recommend(db, make_profile(), Target(preset="esports"))
+    values = {c.setting_id: c.value for c in rec.settings}
+    assert values["ctrl_left_center_deadzone"] == 2
+    assert values["ctrl_right_center_deadzone"] == 2
+    assert values["ctrl_trigger_deadzone"] == 0
+    assert values["zoom_sensitivity_coefficient"] == 178
+    assert values["ctrl_vibration"] == 0
+
+
+# -- graphics keys present in the real profile but not modelled until now ----
+# Found by diffing examples/PROFSAVEbf6mp_profile against the database while
+# checking Season 5 coverage. The keys are real, so these write.
+
+REAL_PROFILE = Path(__file__).resolve().parents[1] / "examples" / "PROFSAVEbf6mp_profile"
+
+CONFIRMED_NEW = {
+    "sun_shadow_quality": "GstRender.SunShadowQuality",
+    "local_light_shadow_quality": "GstRender.LocalLightShadowQuality",
+    "volumetric_quality": "GstRender.VolumetricQuality",
+    "weapon_dof": "GstRender.WeaponDOF",
+    "weapon_motion_blur": "GstRender.MotionBlurWeapon",
+}
+
+
+def _real_profile_keys() -> dict[str, str]:
+    from bf6tuner import profile_audit
+    return profile_audit.parse_keys(REAL_PROFILE.read_text(encoding="utf-8", errors="ignore"))
+
+
+@pytest.mark.parametrize("setting_id,key", CONFIRMED_NEW.items())
+def test_new_graphics_settings_use_keys_from_the_real_profile(db, setting_id, key):
+    setting = db.setting(setting_id)
+    assert setting["profsave_key"] == key
+    assert setting.get("confidence") != "unverified"
+    assert key in _real_profile_keys()
+
+
+def test_new_graphics_settings_are_written_at_quality(db):
+    """The reference profile has all of these at their lowest value, so the
+    Quality preset must plan a change for each multi-level one."""
+    existing = _real_profile_keys()
+    rec = recommend(db, make_profile(), Target(preset="quality"))
+    planned = {key: new for key, _, new in writer.profsave_plan(rec, existing)}
+    for key in ("GstRender.SunShadowQuality", "GstRender.VolumetricQuality",
+                "GstRender.LocalLightShadowQuality", "GstRender.WeaponDOF"):
+        assert key in planned, key
+    assert "GstRender.MotionBlurWeapon" not in planned, "already 0 in the real profile"
+
+
+def test_weapon_motion_blur_is_written_in_profile_units(db):
+    """Shown as 0-100 %, stored as 0.0-1.0, like world motion blur."""
+    rec = recommend(db, make_profile(), Target(preset="competitive"))
+    plan = writer.profsave_plan(rec, {"GstRender.MotionBlurWeapon": "1.000000"})
+    assert ("GstRender.MotionBlurWeapon", "1.000000", "0.000000") in plan
+
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       overrides={"weapon_motion_blur": 50})
+    plan = writer.profsave_plan(forced, {"GstRender.MotionBlurWeapon": "0.000000"})
+    assert ("GstRender.MotionBlurWeapon", "0.000000", "0.500000") in plan
+
+
+def test_esports_drops_sun_shadows_to_low(db):
+    rec = recommend(db, make_profile(), Target(preset="esports"))
+    values = {c.setting_id: c.value for c in rec.settings}
+    assert values["sun_shadow_quality"] == 0
+    assert values["volumetric_quality"] == 0
+    assert values["weapon_dof"] == 0
+
+
+# -- every key the app writes exists in a real profile -----------------------
+# Twelve settings used to point at keys the real profile does not contain
+# (UltraLowLatency, HDREnabled, MusicVolume, VegetationQuality, ...).
+# profsave_plan only rewrites existing keys, so on a real install they were
+# recommended and silently never applied. This guards against it coming back.
+
+def test_every_profsave_key_exists_in_the_real_profile(db):
+    real = _real_profile_keys()
+    for setting in db.settings:
+        keys = [setting.get("profsave_key")] + list(setting.get("profsave_key_by_vendor", {}).values())
+        for key in filter(None, keys):
+            assert key in real, f"{setting['id']} points at {key}, which no real profile has"
+
+
+AMD = dict(gpu_name="AMD Radeon RX 7800 XT", gpu_vendor="amd", vram_gb=16.0)
+INTEL = dict(gpu_name="Intel Arc B580", gpu_vendor="intel", vram_gb=12.0)
+
+
+@pytest.mark.parametrize("gpu,key", [
+    ({}, "GstRender.NvidiaLowLatency"),
+    (AMD, "GstRender.AMDLowLatency"),
+    (INTEL, "GstRender.IntelLowLatency"),
+])
+def test_low_latency_writes_the_key_for_this_gpu_vendor(db, gpu, key):
+    rec = recommend(db, make_profile(**gpu), Target(preset="competitive"))
+    choice = next(c for c in rec.settings if c.setting_id == "low_latency")
+    assert choice.profsave_key == key and choice.value == 1
+    existing = {k: "0" for k in ("GstRender.NvidiaLowLatency", "GstRender.AMDLowLatency",
+                                 "GstRender.IntelLowLatency")}
+    plan = writer.profsave_plan(rec, existing)
+    assert [(k, new) for k, _, new in plan if "LowLatency" in k] == [(key, "1")]
+
+
+def test_on_plus_boost_is_nvidia_only(db):
+    nvidia = recommend(db, make_profile(), Target(preset="competitive"), overrides={"low_latency": 2})
+    amd = recommend(db, make_profile(**AMD), Target(preset="competitive"), overrides={"low_latency": 2})
+    assert next(c for c in nvidia.settings if c.setting_id == "low_latency").value == 2
+    assert next(c for c in amd.settings if c.setting_id == "low_latency").value == 1
+
+
+def test_low_latency_has_no_key_for_an_unknown_gpu_vendor(db):
+    rec = recommend(db, make_profile(gpu_name="Some Unknown GPU", gpu_vendor="unknown"),
+                    Target(preset="competitive"))
+    assert next(c for c in rec.settings if c.setting_id == "low_latency").profsave_key is None
+
+
+def test_music_volume_is_written_to_the_real_key_in_profile_units(db):
+    rec = recommend(db, make_profile(), Target(preset="balanced"))
+    plan = writer.profsave_plan(rec, {"GstAudio.Volume_Music": "0.800000"})
+    assert ("GstAudio.Volume_Music", "0.800000", "0.400000") in plan
+    competitive = recommend(db, make_profile(), Target(preset="competitive"))
+    assert writer.profsave_plan(competitive, {"GstAudio.Volume_Music": "0.000000"}) == []
+
+
+def test_hdr_uses_the_real_profile_key(db):
+    rec = recommend(db, make_profile(), Target(preset="quality", hdr_display=True))
+    choice = next(c for c in rec.settings if c.setting_id == "hdr")
+    assert choice.profsave_key == "GstRender.HighDynamicRangeMode" and choice.value == 1
+    plan = writer.profsave_plan(rec, {"GstRender.HighDynamicRangeMode": "0"})
+    assert ("GstRender.HighDynamicRangeMode", "0", "1") in plan
+
+
+KEYLESS_NOW = ("water_quality", "vegetation_quality", "sky_quality", "decal_quality",
+               "ray_tracing", "mouse_sensitivity", "ads_sensitivity", "mouse_acceleration")
+
+
+@pytest.mark.parametrize("setting_id", KEYLESS_NOW)
+def test_settings_without_a_real_key_are_unverified(db, setting_id):
+    setting = db.setting(setting_id)
+    assert setting["confidence"] == "unverified"
+    assert setting.get("profsave_key") is None

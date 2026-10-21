@@ -69,6 +69,13 @@ def verify_data() -> None:
     json.loads(keybinds_path.read_text(encoding="utf-8"))
     log("keybind_concepts.json verified: present and parses cleanly")
 
+    # Same for the profile key baseline (see profile_audit.py).
+    baseline_path = DATA / "profile_key_baseline.json"
+    if not baseline_path.is_file():
+        raise SystemExit(f"Missing profile key baseline: {baseline_path}")
+    json.loads(baseline_path.read_text(encoding="utf-8"))
+    log("profile_key_baseline.json verified: present and parses cleanly")
+
 
 def write_build_info() -> Path:
     """Record the commit this build was made from, so the running app can ask

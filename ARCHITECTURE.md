@@ -66,6 +66,16 @@ database.load()  ───┘         (matching,            │            └�
 - **`prefs.py`** — persisted user preferences: manual path overrides,
   per-setting overrides, and per-cfg-line overrides, all in
   `%APPDATA%\BF6Tuner\`.
+- **`profile_audit.py`** — reports settings keys present in the user's
+  real `PROFSAVE_profile` that the app has never seen, i.e. what a game update
+  added. Two signals: on a first scan, keys absent from
+  `data/profile_key_baseline.json` (a real pre-Season-5 profile) *within the
+  key families that capture covers*; on every later scan, keys new since the
+  machine's own previous scan (history in `prefs.py`'s
+  `profile_keys_seen.json`). `audit()` is pure - it returns the updated
+  history rather than saving it, because the GUI recomputes constantly and
+  saving on each recompute would make a just-reported key "seen" and the
+  report would vanish. See entry (60).
 - **`icon.py`** — the app's reticle icon, drawn pixel-by-pixel in pure Python
   (no image library). Shared by `packaging/make_icon.py` (writes the .ico
   baked into the .exe) and `ui/app.py`'s `app_icon()` (renders the same
@@ -365,6 +375,222 @@ tests as of the last README update).
 
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
+
+### 2026-10-21 (63) — Twelve settings that never applied, fixed
+
+The user said go ahead on the twelve dead keys found in entry 62. Every
+setting now writes a key that `examples/PROFSAVEbf6mp_profile` really
+contains, or has no key and is `confidence: "unverified"`.
+`test_every_profsave_key_exists_in_the_real_profile` fails if that slips
+again.
+
+Remapped to real keys (`confidence: "community"`):
+
+- **`low_latency`** is stored per GPU vendor in the real profile, so the
+  setting now has `profsave_key_by_vendor` (nvidia/amd/intel →
+  `NvidiaLowLatency`/`AMDLowLatency`/`IntelLowLatency`) instead of
+  `profsave_key`. `engine._profsave_key_for()` resolves it from the matched
+  GPU, and `SettingChoice.profsave_key` carries the resolved key. That
+  covers both write and compare, because `compare.read_current_settings`
+  already reads keys from the choices. An unknown vendor gets no key, so
+  nothing is written. `max_by_vendor` caps overrides at 1 on AMD and Intel
+  ("On + Boost" is NVIDIA-only). Intel now counts as low-latency capable
+  (XeLL); before this, it was forced Off.
+- **`hdr`** → `GstRender.HighDynamicRangeMode`. 0 = off and 1 = on is
+  assumed from the SDR profile's 0.
+- **`music_volume`** → `GstAudio.Volume_Music` and **`master_volume`** →
+  `GstAudio.Volume`, both with `profsave_scale` 0.01 (stored as 0.0-1.0).
+  Now that music volume actually writes, Competitive dropped from 10 % to 0 %.
+  At 10 %, the plan would have turned music *up* on the real profile, which
+  sits at 0.
+
+Made unverified, with the key removed: `water_quality`,
+`vegetation_quality`, `sky_quality`, `decal_quality` and `ray_tracing` have
+no counterpart in the file. `mouse_sensitivity`, `ads_sensitivity` and
+`mouse_acceleration` have no `GstInput` keys in it. The notes say so and
+point at the real neighbour where there is one: Undergrowth for vegetation,
+Volumetric for sky, and `RaytracingAmbientOcclusion` for ray tracing. That
+last one was not adopted because its menu exposure is unconfirmed.
+
+**Correction to entry 44.** That entry said
+`GstRender.VegetationQuality` was confirmed alongside `UndergrowthQuality`.
+The committed dump has no such key. The two tests that encoded the claim now
+assert the opposite, and the undergrowth note no longer cites it.
+
+Test fixture: `test_compare.ULTRA_PROFSAVE` now uses the real keys. It
+produces the same 8 changes as before. 16 new tests (314 total).
+
+### 2026-10-21 (62) — Season 6 check, and graphics keys the real profile had all along
+
+The user asked about Season 6 and for anything still missing from Season 5.
+**Season 6 is not out:** EA hasn't announced a date or any content. The
+only third-party estimates put it in January to March 2027. So nothing was
+added for it. When it lands, the `profile_audit` card (entry 60) is the
+first place a new setting will show up.
+
+For Season 5, the best source was not a guide but
+`examples/PROFSAVEbf6mp_profile` diffed against the database. Five real
+graphics keys were never modelled, and they now write
+(`confidence: "community"`):
+
+- `GstRender.SunShadowQuality`: presets 0/1/2/3
+- `GstRender.LocalLightShadowQuality`: presets 0/0/1/3
+- `GstRender.VolumetricQuality`: presets 0/1/2/3
+- `GstRender.WeaponDOF`: off except Quality
+- `GstRender.MotionBlurWeapon`: `always: 0`, with `profsave_scale` 0.01 like world motion blur
+
+For the three quality keys, the Low to Ultra range (0 to 3) is assumed to
+match every other quality key in the same file; the notes say so. Cost
+curves are modelled like those of their neighbours. Predicted FPS per preset
+is unchanged, because preset costs only shift the estimate when overridden.
+Two more controller entries were added, both unverified and with no key:
+Aim Assist Slowdown 100 and Trigger Max Input Threshold 100. 71 settings,
+10 new tests (298 total).
+
+Not modelled, deliberately: `ShadowFiltering` and `ShaderQuality` (the
+option ranges are unknown), along with HUD colours, subtitles and VOIP
+(not tuning).
+
+**Found, not fixed - needs a decision** (fixed in entry 63). Twelve settings carry a
+`profsave_key` that the real profile does not contain. `profsave_plan` only
+rewrites existing keys, so on a real install these are recommended but
+silently never applied:
+
+- `low_latency` → `UltraLowLatency`. The file has vendor-specific
+  `NvidiaLowLatency`/`AMDLowLatency`/`IntelLowLatency`.
+- `hdr` → `HDREnabled`. The file has `HighDynamicRangeMode`.
+- `music_volume` → `MusicVolume`. The file has `Volume_Music`, 0.0-1.0.
+- `master_volume` → `MasterVolume`. The file has `Volume`.
+- `water_quality`, `vegetation_quality`, `sky_quality`, `decal_quality` and
+  `ray_tracing` have no counterpart in the file at all. `sky_quality`
+  ("Sky / Volumetric Cloud Quality") probably describes what the real
+  `VolumetricQuality` controls, so it should be retired once that is
+  confirmed. Until then, the two show up as separate rows.
+- The three mouse keys: the file has no `GstInput` keys, as noted in entry 61.
+
+Fixing these means remapping keys and value scales (the low-latency one is
+per-vendor), so it is left for an explicit go-ahead.
+
+### 2026-10-21 (61) — Season 5 controller and aiming settings, hand-set only
+
+User asked to add the configuration missing compared with the YouTube video
+"NEW Best Settings for Battlefield 6 Season 5!" (youtu.be/GdkKgULOYtU).
+**The video itself was not watched** - YouTube is unreachable from the
+cloud session (proxy 403, WebFetch DNS failure). Its title and a search
+listing were all that came back, and the listing says it covers controller
+settings. The values were taken from search-result summaries of Season 5
+controller guides (one other Season 5 video, Dexerto, Dot Esports, Beebom,
+SCUF, Insider Gaming) where they agree. If the video recommends something
+different, change the presets; the structure doesn't need to move.
+
+Added ten settings to `ingame_settings.json` (64 total), all
+`confidence: "unverified"` with **no `profsave_key`**. The reference
+profile still has zero `GstInput.*` keys, so section 7's "never invent
+PROFSAVE keys" rule still applies. They show up as recommendations to set by
+hand, the same way as `weapon_fov`/`view_distance`:
+
+- `Controls > Aiming`: Zoom Sensitivity Coefficient 178 (133 mentioned as
+  the alternative);
+- `Controls > Controller`: left/right stick Center Deadzone 2, Axial
+  Deadzone 6, Max Input Threshold 100; Trigger Deadzone 0; Infantry Aim
+  Assist 100; Vibration off (on for the Quality preset).
+
+The center deadzones default to 2, not 0, because Season 5 removed the
+hidden deadzone buffer (entry 60): 0 is now a true 0 and drifts on a worn
+stick. Values are the same across presets except vibration, since none of
+these affect frame rate (zero cost, which is tested). Left out
+deliberately: Aim Assist Zoom Snap (guides split between 0 and 100) and
+per-player sensitivities (personal, like `mouse_sensitivity`). The detail
+pane's UNVERIFIED badge now says "from common Frostbite/FPS conventions or
+community guides", which is accurate for both kinds of entry.
+
+Twelve new tests in `test_engine.py` (288 total). They cover: each new
+setting is unverified, has no key, can be overridden and never reaches a
+profsave write; the new settings cost no frames; and the Season 5 defaults.
+To promote one: change it in game, then grep the saved `PROFSAVE_profile`
+for a `GstInput.*` key that moved. Note that `mouse_*`/`ads_sensitivity`
+already carry `GstInput.*` keys that the reference dump never confirmed.
+They pre-date this entry and are mostly `never_write`, but
+`mouse_acceleration` (`always: 0`) is worth re-checking against a profile
+that has input keys.
+
+### 2026-10-18 (60) — Season 5 check, and detecting new settings keys from the profile itself
+
+User asked: check what's new in Battlefield 6 Season 5 and add those configs.
+
+**What Season 5 actually changed (game update 2.1.1.0, "Siege of Vegas",
+released 2026-10-13).** Researched from search-result summaries only - every
+primary source (ea.com, forums.ea.com, dsogaming, insider-gaming, gamerant,
+games.gg, twistedvoxel, bf6balancelog) was unreachable from the cloud session
+that did this work (WebFetch could not resolve them; the shell proxy refused
+them with 403), so nothing below was read first-hand. Across every summary,
+2.1.1.0 added **no new graphics, display, audio or `User.cfg` options**. The
+settings-relevant items were all controller/UI-side:
+
+- a hidden controller analogue-stick deadzone buffer removed, so a 0 deadzone
+  is now a true 0 (one EA forum post three days after release claims the
+  opposite - a new ~4-5% floor - so even this is disputed);
+- gamepad recoil compensation reduced from 11% to 5% (a tuning value, not an
+  option);
+- a typo fixed in "ADS Dispersion Crosshair Opacity", the "Infantry Sprint"
+  option's text changed, a blank "Controller Blueprint" screen fixed;
+- Spectator Mode now remembers the last camera view.
+
+**Nothing was added to the settings database for these, deliberately.** The
+real profile this project works from (`examples/PROFSAVEbf6mp_profile`)
+contains 195 keys and every one is `GstRender.*` or `GstAudio.*` - **zero**
+`GstInput.*` keys, so there is no confirmed key to map the deadzone change to.
+Inventing one from a patch-note sentence would break section 7's "never
+invent PROFSAVE keys" rule. If a future profile dump includes input keys,
+the deadzone change is worth a note on that setting: anyone who set 0
+relying on the old hidden buffer may now see stick drift on a worn controller.
+
+**What was built instead: the app now detects new keys itself.** Patch notes
+being an unreliable record of settings changes (as this round showed) is the
+real problem, so `profile_audit.py` reads the user's own profile and reports
+keys the app has never seen - exactly what a setting added by an update
+looks like. Design points worth keeping:
+
+- *The family limit on first scan is the whole point.* `profile_key_baseline.json`
+  is generated from the committed dump (169 keys after dropping 26
+  `ShaderBundleVersion_*` per-machine cache stamps) and records its own
+  `families` (`GstAudio`, `GstRender`). A key outside those families is never
+  reported on a first scan - the dump has no input keys, so "not in baseline"
+  says nothing about them, and reporting them would bury the one real signal
+  under every mouse and controller setting on the machine.
+- *History is the precise signal.* After the first scan, comparison is the
+  machine's file against its own previous scan (`prefs.profile_keys_seen.json`,
+  key -> first-seen date), across all families. Keys removed by an update stay
+  in history so they don't read as "new" if they come back.
+- *`GstKeyBinding.*` is always ignored*, alongside the shader stamps - bindings
+  are only written once their in-game page is visited (see `keybinds.py`), so
+  their appearance is not evidence of an update.
+- *`audit()` is pure and the GUI snapshots history once per window.* It runs
+  in `_on_detected` next to `_refresh_keybinds()`, not in `refresh()`, and
+  compares against the history as it stood when the window opened, so
+  re-detecting mid-session doesn't make a just-reported key disappear. Found
+  by a headless check, not by reasoning about it.
+- *Nothing it finds is ever written.* It only reports; each key needs a real
+  value from a real file before it becomes a setting.
+
+UI: a "New settings keys" card under the Summary on the Current vs
+recommended tab (count in the title, keys listed selectable in the `Mono`
+style, an explicit "not recommendations" line). The text report gains a
+`NEW SETTINGS KEYS` section, from both the GUI's Export report and the CLI;
+the CLI persists history the same way. Bundled and verified like
+`keybind_concepts.json` (`bf6tuner.spec`, `build.py verify_data`), not added to
+`database.DATASETS`.
+
+- 19 new tests (276 total, up from 257), including one that regenerates the
+  baseline from the dump and fails if they drift apart, and the ones that pin
+  the false-positive guards: input keys and key bindings are never reported as
+  new on a first scan. Headless UI check: card renders, survives a re-detect,
+  is quiet on the next launch with the same file, and catches a key added
+  after that.
+- **For the user to do:** launch BF6 after the Season 5 update, change any
+  video setting, Apply, quit, then re-detect in the app. The card then shows
+  what Season 5 really added to *their* profile, and that list is the right
+  input for the next database round.
 
 ### 2026-09-18 (59) — Fixed "check for updates" CERTIFICATE_VERIFY_FAILED for some users
 

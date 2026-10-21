@@ -1,6 +1,6 @@
 {
   "schema": "bf6tuner.ingame_settings/1",
-  "version": "2026.09.07.1",
+  "version": "2026.10.21.1",
   "profsave": {
     "paths": [
       "%USERPROFILE%\\Documents\\Battlefield 6\\settings\\PROFSAVE_profile",
@@ -660,9 +660,11 @@
     },
     {
       "id": "low_latency",
-      "label": "NVIDIA Reflex / AMD Anti-Lag",
+      "label": "NVIDIA Reflex / AMD Anti-Lag / Intel XeLL",
       "menu": "Video > Advanced",
-      "profsave_key": "GstRender.UltraLowLatency",
+      "confidence": "community",
+      "profsave_key_by_vendor": {"nvidia": "GstRender.NvidiaLowLatency", "amd": "GstRender.AMDLowLatency", "intel": "GstRender.IntelLowLatency"},
+      "max_by_vendor": {"amd": 1, "intel": 1},
       "type": "enum",
       "options": [
         {
@@ -689,7 +691,7 @@
         "cpu": 0,
         "vram": 0
       },
-      "note": "On, always. It keeps the render queue short automatically, which is the same job RenderDevice.RenderAheadLimit does by hand. '+Boost' only helps if you are heavily GPU-bound and costs power; plain 'On' is right for nearly everyone.",
+      "note": "On, always. It keeps the render queue short automatically, which is the same job RenderDevice.RenderAheadLimit does by hand. '+Boost' only helps if you are heavily GPU-bound and costs power; plain 'On' is right for nearly everyone. The real profile stores this per GPU vendor (NvidiaLowLatency, AMDLowLatency, IntelLowLatency), so the app writes the key for your GPU. 'On + Boost' is NVIDIA-only; AMD and Intel stop at On.",
       "gate": {
         "requires_reflex": true
       },
@@ -1169,7 +1171,7 @@
       "id": "water_quality",
       "label": "Water Quality",
       "menu": "Video > Advanced",
-      "profsave_key": "GstRender.WaterQuality",
+      "confidence": "unverified",
       "type": "enum",
       "options": [
         {"value": 0, "label": "Low"},
@@ -1184,7 +1186,7 @@
         "quality": 3
       },
       "impact": {"gpu": 2, "cpu": 0, "vram": 1},
-      "note": "Controls water surface reflections, wave tessellation and the quality of the underwater transition. Medium is a solid stop: screen-space reflections at High and Ultra look impressive in captures but are barely visible when you are running across a bridge. Low replaces the surface with a flat texture.",
+      "note": "Controls water surface reflections, wave tessellation and the quality of the underwater transition. Medium is a solid stop: screen-space reflections at High and Ultra look impressive in captures but are barely visible when you are running across a bridge. Low replaces the surface with a flat texture. Unverified: a real BF6 profile has no key for this, so it is never written automatically - set it by hand if your menu has it.",
       "cost": {
         "0": {"gpu": -4.0},
         "1": {"gpu": -2.0},
@@ -1218,7 +1220,7 @@
       "id": "vegetation_quality",
       "label": "Vegetation Quality",
       "menu": "Video > Advanced",
-      "profsave_key": "GstRender.VegetationQuality",
+      "confidence": "unverified",
       "type": "enum",
       "options": [
         {
@@ -1249,7 +1251,7 @@
         "cpu": 2,
         "vram": 1
       },
-      "note": "Expensive on vegetated maps, and lower settings thin out the grass that players hide in. Competitive players deliberately run this low. Be aware that this is the setting most likely to be flagged as an unfair advantage in an organised match — check your league's rules. Undergrowth Quality is a separate setting (GstRender.UndergrowthQuality, not this key) — confirmed as genuinely distinct from a real BF6 profile, not the same slider under two names.",
+      "note": "Expensive on vegetated maps, and lower settings thin out the grass that players hide in. Competitive players deliberately run this low. Be aware that this is the setting most likely to be flagged as an unfair advantage in an organised match — check your league's rules. Unverified: a real BF6 profile has no key for this, so it is never written automatically - set it by hand if your menu has it. Undergrowth Quality is the confirmed key for ground cover.",
       "cost": {
         "0": {
           "gpu": -9.0,
@@ -1325,7 +1327,7 @@
         "cpu": 1,
         "vram": 1
       },
-      "note": "Ground-level undergrowth (grass, small plants, ground clutter) as its own setting, separate from Vegetation Quality (bushes/trees) - confirmed as a genuinely distinct key from a real BF6 profile, not the same slider under two names. Same competitive-visibility concern as Vegetation Quality: dense ground cover hides prone players. Exact per-level difference is not independently documented beyond the confirmed enum range.",
+      "note": "Ground-level undergrowth (grass, small plants, ground clutter) - confirmed as a real key in a BF6 profile, unlike Vegetation Quality, which has no key there. Dense ground cover hides prone players, so competitive players run this low; check your league's rules. Exact per-level difference is not independently documented beyond the confirmed enum range.",
       "cost": {
         "0": {
           "gpu": -6.0,
@@ -1672,7 +1674,7 @@
       "id": "sky_quality",
       "label": "Sky / Volumetric Cloud Quality",
       "menu": "Video > Advanced",
-      "profsave_key": "GstRender.SkyQuality",
+      "confidence": "unverified",
       "type": "enum",
       "options": [
         {"value": 0, "label": "Low"},
@@ -1687,7 +1689,7 @@
         "quality": 3
       },
       "impact": {"gpu": 2, "cpu": 0, "vram": 1},
-      "note": "Volumetric cloud simulation and atmospheric scattering quality. Low replaces the volumetric clouds with a flat skybox texture — the most visible sky downgrade. Medium gives you real 3D clouds at a sensible cost. Ultra adds a higher ray-march step count that makes cloud edges and internal shadowing sharper, which matters most in wide-open outdoor maps.",
+      "note": "Volumetric cloud simulation and atmospheric scattering quality. Low replaces the volumetric clouds with a flat skybox texture — the most visible sky downgrade. Medium gives you real 3D clouds at a sensible cost. Ultra adds a higher ray-march step count that makes cloud edges and internal shadowing sharper, which matters most in wide-open outdoor maps. Unverified: a real BF6 profile has no key for this, so it is never written automatically - set it by hand if your menu has it. Volumetric Quality (a real key) probably covers the same clouds and fog.",
       "cost": {
         "0": {"gpu": -4.5},
         "1": {"gpu": -2.0},
@@ -1867,7 +1869,7 @@
       "id": "decal_quality",
       "label": "Decal Quality",
       "menu": "Video > Advanced",
-      "profsave_key": "GstRender.DecalQuality",
+      "confidence": "unverified",
       "type": "enum",
       "options": [
         {"value": 0, "label": "Low"},
@@ -1882,7 +1884,7 @@
         "quality": 3
       },
       "impact": {"gpu": 1, "cpu": 1, "vram": 1},
-      "note": "Bullet holes, explosion craters, blood, scorched surfaces and other persistent marks. This controls both the resolution of each decal projector and how many remain active at once before the oldest are retired. Low causes marks to pop off surfaces quickly, which can reduce visual clutter in a sustained firefight — but also makes it harder to read where fire is landing.",
+      "note": "Bullet holes, explosion craters, blood, scorched surfaces and other persistent marks. This controls both the resolution of each decal projector and how many remain active at once before the oldest are retired. Low causes marks to pop off surfaces quickly, which can reduce visual clutter in a sustained firefight — but also makes it harder to read where fire is landing. Unverified: a real BF6 profile has no key for this, so it is never written automatically - set it by hand if your menu has it.",
       "cost": {
         "0": {"gpu": -2.0, "cpu": -1.0},
         "1": {"gpu": -1.0, "cpu": -0.5},
@@ -1987,7 +1989,7 @@
       "id": "ray_tracing",
       "label": "Ray Tracing",
       "menu": "Video > Ray Tracing",
-      "profsave_key": "GstRender.RayTracingEnabled",
+      "confidence": "unverified",
       "type": "bool",
       "presets": {
         "esports": 0,
@@ -2000,7 +2002,7 @@
         "cpu": 2,
         "vram": 3
       },
-      "note": "Never for competitive play — it is a 20-40% frame rate cost for lighting you will not look at while being shot. Only offered in Quality preset, and only on a GPU with strong RT hardware and enough VRAM.",
+      "note": "Never for competitive play — it is a 20-40% frame rate cost for lighting you will not look at while being shot. Only offered in Quality preset, and only on a GPU with strong RT hardware and enough VRAM. Unverified: a real BF6 profile has no key for this, so it is never written automatically - set it by hand if your menu has it. The only ray tracing key in a real profile is GstRender.RaytracingAmbientOcclusion, and whether the menu exposes it is unconfirmed.",
       "gate": {
         "min_rt": 3,
         "min_vram": 12
@@ -2318,7 +2320,8 @@
       "id": "hdr",
       "label": "HDR",
       "menu": "Video > Basic",
-      "profsave_key": "GstRender.HDREnabled",
+      "confidence": "community",
+      "profsave_key": "GstRender.HighDynamicRangeMode",
       "type": "bool",
       "presets": {
         "esports": 0,
@@ -2331,7 +2334,7 @@
         "cpu": 0,
         "vram": 1
       },
-      "note": "Only if you have a display that actually does HDR well (true local dimming or OLED). On a cheap 'HDR400' panel it washes the image out and can cost you contrast against dark backgrounds. Off for competitive regardless of the panel.",
+      "note": "Only if you have a display that actually does HDR well (true local dimming or OLED). On a cheap 'HDR400' panel it washes the image out and can cost you contrast against dark backgrounds. Off for competitive regardless of the panel. Written to GstRender.HighDynamicRangeMode, the HDR key in a real profile; 0 = off and 1 = on is assumed from the profile's SDR value of 0.",
       "gate": {
         "requires_hdr_display": true
       },
@@ -2411,7 +2414,7 @@
       "id": "mouse_sensitivity",
       "label": "Mouse Sensitivity",
       "menu": "Controls > Mouse",
-      "profsave_key": "GstInput.MouseSensitivity",
+      "confidence": "unverified",
       "type": "slider",
       "min": 1,
       "max": 100,
@@ -2427,7 +2430,7 @@
         "cpu": 0,
         "vram": 0
       },
-      "note": "Never changed by this app. Your muscle memory is worth more than any setting in this list.",
+      "note": "Never changed by this app. Your muscle memory is worth more than any setting in this list. Unverified: a real BF6 profile has no GstInput keys, so this app does not know where mouse settings are stored.",
       "personal": true,
       "never_write": true
     },
@@ -2435,7 +2438,7 @@
       "id": "mouse_acceleration",
       "label": "Mouse Acceleration",
       "menu": "Controls > Mouse",
-      "profsave_key": "GstInput.MouseAcceleration",
+      "confidence": "unverified",
       "type": "bool",
       "presets": {
         "esports": 0,
@@ -2448,7 +2451,7 @@
         "cpu": 0,
         "vram": 0
       },
-      "note": "Off. Acceleration means the same physical movement produces a different in-game rotation depending on speed, which is the opposite of building muscle memory.",
+      "note": "Off. Acceleration means the same physical movement produces a different in-game rotation depending on speed, which is the opposite of building muscle memory. Unverified: a real BF6 profile has no GstInput keys, so this app does not know where mouse settings are stored. Set it by hand.",
       "always": 0,
       "tradeoff": {
         "lower": {
@@ -2473,7 +2476,7 @@
       "id": "ads_sensitivity",
       "label": "ADS Sensitivity / Uniform Soldier Aiming",
       "menu": "Controls > Mouse",
-      "profsave_key": "GstInput.ADSMouseSensitivity",
+      "confidence": "unverified",
       "type": "slider",
       "min": 0,
       "max": 200,
@@ -2489,7 +2492,7 @@
         "cpu": 0,
         "vram": 0
       },
-      "note": "Set it once so that the same hand movement covers the same on-screen distance at every zoom level, then never touch it again. Not something an auto-tuner should decide for you.",
+      "note": "Set it once so that the same hand movement covers the same on-screen distance at every zoom level, then never touch it again. Not something an auto-tuner should decide for you. Unverified: a real BF6 profile has no GstInput keys, so this app does not know where mouse settings are stored.",
       "personal": true,
       "never_write": true
     },
@@ -2497,7 +2500,8 @@
       "id": "master_volume",
       "label": "Audio Mix / Master Volume",
       "menu": "Audio",
-      "profsave_key": "GstAudio.MasterVolume",
+      "profsave_key": "GstAudio.Volume",
+      "profsave_scale": 0.01,
       "type": "slider",
       "min": 0,
       "max": 100,
@@ -2521,14 +2525,16 @@
       "id": "music_volume",
       "label": "Music Volume",
       "menu": "Audio",
-      "profsave_key": "GstAudio.MusicVolume",
+      "confidence": "community",
+      "profsave_key": "GstAudio.Volume_Music",
+      "profsave_scale": 0.01,
       "type": "slider",
       "min": 0,
       "max": 100,
       "unit": "%",
       "presets": {
         "esports": 0,
-        "competitive": 10,
+        "competitive": 0,
         "balanced": 40,
         "quality": 50
       },
@@ -2825,9 +2831,817 @@
           ]
         }
       }
+    },
+    {
+      "id": "zoom_sensitivity_coefficient",
+      "label": "Zoom Sensitivity Coefficient",
+      "menu": "Controls > Aiming",
+      "confidence": "unverified",
+      "type": "slider",
+      "min": 0,
+      "max": 200,
+      "unit": "",
+      "presets": {
+        "esports": 178,
+        "competitive": 178,
+        "balanced": 178,
+        "quality": 178
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Sets how aim sensitivity scales between hip-fire and each zoom level when Uniform Soldier Aiming is on. 178 matches screen distance on a 16:9 display and is the consensus value in Season 5 guides for both mouse and controller; 133 is the alternative some players prefer for close-range scopes. Unverified: taken from community Season 5 controller guides, not confirmed against a real BF6 profile (the reference dump has no GstInput keys), so it is never written automatically - set it by hand under Controls.",
+      "personal": true,
+      "tradeoff": {
+        "raise": {
+          "pros": [
+            "Scoped aim feels closer to hip-fire speed"
+          ],
+          "cons": [
+            "Can feel twitchy on high-magnification optics"
+          ]
+        },
+        "lower": {
+          "pros": [
+            "Slower, steadier aim on high zoom"
+          ],
+          "cons": [
+            "Same hand movement covers less screen at zoom, breaking muscle memory between optics"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ctrl_left_center_deadzone",
+      "label": "Left Stick Center Deadzone",
+      "menu": "Controls > Controller",
+      "confidence": "unverified",
+      "type": "slider",
+      "min": 0,
+      "max": 100,
+      "unit": "%",
+      "presets": {
+        "esports": 2,
+        "competitive": 2,
+        "balanced": 2,
+        "quality": 2
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Season 5 (2.1.1.0) removed a hidden deadzone buffer, so 0 now really means 0. Start at 2 and raise it one step at a time only if your character creeps with the stick untouched. Unverified: taken from community Season 5 controller guides, not confirmed against a real BF6 profile (the reference dump has no GstInput keys), so it is never written automatically - set it by hand under Controls.",
+      "personal": true,
+      "tradeoff": {
+        "raise": {
+          "pros": [
+            "Hides stick drift on a worn controller"
+          ],
+          "cons": [
+            "Movement starts later and feels less responsive"
+          ]
+        },
+        "lower": {
+          "pros": [
+            "Movement responds to the smallest stick input"
+          ],
+          "cons": [
+            "At 0 a worn stick can drift now that the hidden buffer is gone"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ctrl_left_axial_deadzone",
+      "label": "Left Stick Axial Deadzone",
+      "menu": "Controls > Controller",
+      "confidence": "unverified",
+      "type": "slider",
+      "min": 0,
+      "max": 100,
+      "unit": "%",
+      "presets": {
+        "esports": 6,
+        "competitive": 6,
+        "balanced": 6,
+        "quality": 6
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Ignores small sideways input while you push mostly forward, so sprinting and strafing stay straight. Season 5 guides converge on about 6 for the left stick. Unverified: taken from community Season 5 controller guides, not confirmed against a real BF6 profile (the reference dump has no GstInput keys), so it is never written automatically - set it by hand under Controls.",
+      "personal": true,
+      "tradeoff": {
+        "raise": {
+          "pros": [
+            "Straighter forward movement and sprint"
+          ],
+          "cons": [
+            "Fine diagonal strafes need a bigger push"
+          ]
+        },
+        "lower": {
+          "pros": [
+            "Finer diagonal movement control"
+          ],
+          "cons": [
+            "Forward movement can wobble off-line"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ctrl_left_max_input",
+      "label": "Left Stick Max Input Threshold",
+      "menu": "Controls > Controller",
+      "confidence": "unverified",
+      "type": "slider",
+      "min": 0,
+      "max": 100,
+      "unit": "%",
+      "presets": {
+        "esports": 100,
+        "competitive": 100,
+        "balanced": 100,
+        "quality": 100
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "How far the stick must travel to count as full input. 100 keeps the full range; some Season 5 guides drop the left stick to 80 so full sprint speed arrives with less push. Unverified: taken from community Season 5 controller guides, not confirmed against a real BF6 profile (the reference dump has no GstInput keys), so it is never written automatically - set it by hand under Controls.",
+      "personal": true,
+      "tradeoff": {
+        "raise": {
+          "pros": [
+            "Full stick range for fine movement speed"
+          ],
+          "cons": [
+            "Full speed needs the stick pushed all the way"
+          ]
+        },
+        "lower": {
+          "pros": [
+            "Full movement speed reached with less stick travel"
+          ],
+          "cons": [
+            "Less range left for walking speeds"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ctrl_right_center_deadzone",
+      "label": "Right Stick Center Deadzone",
+      "menu": "Controls > Controller",
+      "confidence": "unverified",
+      "type": "slider",
+      "min": 0,
+      "max": 100,
+      "unit": "%",
+      "presets": {
+        "esports": 2,
+        "competitive": 2,
+        "balanced": 2,
+        "quality": 2
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Same Season 5 change as the left stick: 0 is now a true 0. 2 is the common starting point - the lowest value at which most controllers stop the crosshair drifting by itself. Unverified: taken from community Season 5 controller guides, not confirmed against a real BF6 profile (the reference dump has no GstInput keys), so it is never written automatically - set it by hand under Controls.",
+      "personal": true,
+      "tradeoff": {
+        "raise": {
+          "pros": [
+            "Stops the crosshair drifting on a worn stick"
+          ],
+          "cons": [
+            "Small aim corrections are swallowed"
+          ]
+        },
+        "lower": {
+          "pros": [
+            "Tiny aim adjustments register immediately"
+          ],
+          "cons": [
+            "Crosshair can drift on its own if the stick is worn"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ctrl_right_axial_deadzone",
+      "label": "Right Stick Axial Deadzone",
+      "menu": "Controls > Controller",
+      "confidence": "unverified",
+      "type": "slider",
+      "min": 0,
+      "max": 100,
+      "unit": "%",
+      "presets": {
+        "esports": 6,
+        "competitive": 6,
+        "balanced": 6,
+        "quality": 6
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Ignores small vertical input while you track sideways (and the reverse), so horizontal tracking stays level. Season 5 guides put the right stick between 4 and 8; 6 is the middle of that range. Unverified: taken from community Season 5 controller guides, not confirmed against a real BF6 profile (the reference dump has no GstInput keys), so it is never written automatically - set it by hand under Controls.",
+      "personal": true,
+      "tradeoff": {
+        "raise": {
+          "pros": [
+            "Horizontal tracking stays level"
+          ],
+          "cons": [
+            "Small diagonal corrections are filtered out"
+          ]
+        },
+        "lower": {
+          "pros": [
+            "Smoother diagonal aim"
+          ],
+          "cons": [
+            "Sideways tracking picks up unintended vertical wobble"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ctrl_right_max_input",
+      "label": "Right Stick Max Input Threshold",
+      "menu": "Controls > Controller",
+      "confidence": "unverified",
+      "type": "slider",
+      "min": 0,
+      "max": 100,
+      "unit": "%",
+      "presets": {
+        "esports": 100,
+        "competitive": 100,
+        "balanced": 100,
+        "quality": 100
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Keep the right stick at 100 so the whole travel is available for aim speed; lowering it reaches full turn speed earlier but compresses the precise range. Unverified: taken from community Season 5 controller guides, not confirmed against a real BF6 profile (the reference dump has no GstInput keys), so it is never written automatically - set it by hand under Controls.",
+      "personal": true,
+      "tradeoff": {
+        "raise": {
+          "pros": [
+            "Full stick range for precise aim"
+          ],
+          "cons": [
+            "Full turn speed needs the stick fully pushed"
+          ]
+        },
+        "lower": {
+          "pros": [
+            "Full turn speed reached with less travel"
+          ],
+          "cons": [
+            "Less precision in the small-movement range"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ctrl_trigger_deadzone",
+      "label": "Trigger Deadzone (LT/RT)",
+      "menu": "Controls > Controller",
+      "confidence": "unverified",
+      "type": "slider",
+      "min": 0,
+      "max": 100,
+      "unit": "%",
+      "presets": {
+        "esports": 0,
+        "competitive": 0,
+        "balanced": 0,
+        "quality": 0
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "0 fires and aims the moment the trigger moves. Every current guide sets both triggers to 0 deadzone and 100 max input threshold. Unverified: taken from community Season 5 controller guides, not confirmed against a real BF6 profile (the reference dump has no GstInput keys), so it is never written automatically - set it by hand under Controls.",
+      "personal": true,
+      "tradeoff": {
+        "raise": {
+          "pros": [
+            "Protects against accidental fire from a resting finger"
+          ],
+          "cons": [
+            "Shots and ADS start later"
+          ]
+        },
+        "lower": {
+          "pros": [
+            "Fastest possible shot and ADS"
+          ],
+          "cons": [
+            "A light touch can fire"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ctrl_aim_assist",
+      "label": "Infantry Aim Assist",
+      "menu": "Controls > Controller",
+      "confidence": "unverified",
+      "type": "slider",
+      "min": 0,
+      "max": 100,
+      "unit": "%",
+      "presets": {
+        "esports": 100,
+        "competitive": 100,
+        "balanced": 100,
+        "quality": 100
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Aim assist is part of the controller balance - turning it down only removes help you are entitled to. Every guide sets it to 100, together with Aim Assist Slowdown at 100. Unverified: taken from community Season 5 controller guides, not confirmed against a real BF6 profile (the reference dump has no GstInput keys), so it is never written automatically - set it by hand under Controls.",
+      "personal": true,
+      "tradeoff": {
+        "raise": {
+          "pros": [
+            "Full rotational help on target"
+          ],
+          "cons": [
+            "Can tug you onto the wrong target in crowds"
+          ]
+        },
+        "lower": {
+          "pros": [
+            "Aim moves only where you push it"
+          ],
+          "cons": [
+            "Gives away an advantage the game balances controller play around"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ctrl_vibration",
+      "label": "Controller Vibration",
+      "menu": "Controls > Controller",
+      "confidence": "unverified",
+      "type": "bool",
+      "presets": {
+        "esports": 0,
+        "competitive": 0,
+        "balanced": 0,
+        "quality": 1
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Off for competitive play: rumble physically moves the sticks while you aim. Leave it on if you play for immersion. Unverified: taken from community Season 5 controller guides, not confirmed against a real BF6 profile (the reference dump has no GstInput keys), so it is never written automatically - set it by hand under Controls.",
+      "personal": true,
+      "tradeoff": {
+        "raise": {
+          "pros": [
+            "Physical feedback for hits, explosions and vehicles"
+          ],
+          "cons": [
+            "Shakes the sticks while you aim"
+          ]
+        },
+        "lower": {
+          "pros": [
+            "Steadier aim under fire"
+          ],
+          "cons": [
+            "Loses tactile feedback"
+          ]
+        }
+      }
+    },
+    {
+      "id": "sun_shadow_quality",
+      "label": "Sun Shadow Quality",
+      "menu": "Video > Advanced",
+      "confidence": "community",
+      "profsave_key": "GstRender.SunShadowQuality",
+      "type": "enum",
+      "options": [
+        {
+          "value": 0,
+          "label": "Low"
+        },
+        {
+          "value": 1,
+          "label": "Medium"
+        },
+        {
+          "value": 2,
+          "label": "High"
+        },
+        {
+          "value": 3,
+          "label": "Ultra"
+        }
+      ],
+      "presets": {
+        "esports": 0,
+        "competitive": 1,
+        "balanced": 2,
+        "quality": 3
+      },
+      "impact": {
+        "gpu": 4,
+        "cpu": 2,
+        "vram": 1
+      },
+      "note": "Resolution and range of shadows cast by the sun - a separate key from Shadow Quality in the real profile. Outdoors this is most of what you see as shadow, and it costs CPU as well as GPU because every cascade is another pass over the scene. Medium keeps the long shadows that give away players on rooftops and ridgelines. Key confirmed in a real BF6 profile; the Low-Ultra range is assumed to match the other quality keys in the same file.",
+      "cost": {
+        "0": {
+          "gpu": -7.0,
+          "cpu": -2.5
+        },
+        "1": {
+          "gpu": -3.5,
+          "cpu": -1.0
+        },
+        "2": {
+          "gpu": 0,
+          "cpu": 0
+        },
+        "3": {
+          "gpu": 5.0,
+          "cpu": 1.5
+        }
+      },
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "Large outdoor frame rate gain, on CPU as well as GPU"
+          ],
+          "cons": [
+            "Blurrier, shorter-range sun shadows; Low can drop the shadow that gives away a player before you see them"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Crisp long-range shadows"
+          ],
+          "cons": [
+            "One of the costliest settings outdoors"
+          ]
+        }
+      }
+    },
+    {
+      "id": "local_light_shadow_quality",
+      "label": "Local Light Shadow Quality",
+      "menu": "Video > Advanced",
+      "confidence": "community",
+      "profsave_key": "GstRender.LocalLightShadowQuality",
+      "type": "enum",
+      "options": [
+        {
+          "value": 0,
+          "label": "Low"
+        },
+        {
+          "value": 1,
+          "label": "Medium"
+        },
+        {
+          "value": 2,
+          "label": "High"
+        },
+        {
+          "value": 3,
+          "label": "Ultra"
+        }
+      ],
+      "presets": {
+        "esports": 0,
+        "competitive": 0,
+        "balanced": 1,
+        "quality": 3
+      },
+      "impact": {
+        "gpu": 3,
+        "cpu": 1,
+        "vram": 1
+      },
+      "note": "Shadows from lamps, muzzle flashes and fires rather than the sun. Matters indoors and at night, rarely decides a fight, and costs frames exactly where fights get busy. Key confirmed in a real BF6 profile; the Low-Ultra range is assumed to match the other quality keys in the same file.",
+      "cost": {
+        "0": {
+          "gpu": -5.0,
+          "cpu": -1.0
+        },
+        "1": {
+          "gpu": -2.5,
+          "cpu": -0.5
+        },
+        "2": {
+          "gpu": 0,
+          "cpu": 0
+        },
+        "3": {
+          "gpu": 4.0,
+          "cpu": 0.8
+        }
+      },
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "Steadier frame rate in interiors and explosion-heavy fights"
+          ],
+          "cons": [
+            "Flatter-looking indoor lighting"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Richer interior and night lighting"
+          ],
+          "cons": [
+            "Costs frames in the busiest moments"
+          ]
+        }
+      }
+    },
+    {
+      "id": "volumetric_quality",
+      "label": "Volumetric Quality",
+      "menu": "Video > Advanced",
+      "confidence": "community",
+      "profsave_key": "GstRender.VolumetricQuality",
+      "type": "enum",
+      "options": [
+        {
+          "value": 0,
+          "label": "Low"
+        },
+        {
+          "value": 1,
+          "label": "Medium"
+        },
+        {
+          "value": 2,
+          "label": "High"
+        },
+        {
+          "value": 3,
+          "label": "Ultra"
+        }
+      ],
+      "presets": {
+        "esports": 0,
+        "competitive": 1,
+        "balanced": 2,
+        "quality": 3
+      },
+      "impact": {
+        "gpu": 4,
+        "cpu": 0,
+        "vram": 1
+      },
+      "note": "Resolution of fog, smoke and light shafts. Expensive at high resolutions because it is a full-screen effect. Lower settings render the same smoke at lower resolution - it does not reliably make smoke see-through, so lower it for frames, not for an edge. Key confirmed in a real BF6 profile; the Low-Ultra range is assumed to match the other quality keys in the same file.",
+      "cost": {
+        "0": {
+          "gpu": -6.0
+        },
+        "1": {
+          "gpu": -3.0
+        },
+        "2": {
+          "gpu": 0
+        },
+        "3": {
+          "gpu": 5.0,
+          "vram": 0.2
+        }
+      },
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "Big GPU saving at 1440p and 4K"
+          ],
+          "cons": [
+            "Blockier fog and light shafts"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Smooth, detailed fog and god rays"
+          ],
+          "cons": [
+            "Full-screen cost that grows with resolution"
+          ]
+        }
+      }
+    },
+    {
+      "id": "weapon_dof",
+      "label": "Weapon Depth of Field",
+      "menu": "Video > Advanced",
+      "confidence": "community",
+      "profsave_key": "GstRender.WeaponDOF",
+      "type": "bool",
+      "presets": {
+        "esports": 0,
+        "competitive": 0,
+        "balanced": 0,
+        "quality": 1
+      },
+      "impact": {
+        "gpu": 1,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Blurs the edges of the screen while aiming down sights. Off for anything competitive - it blurs exactly the periphery where flanking players appear. Key confirmed in a real BF6 profile.",
+      "cost": {
+        "0": {
+          "gpu": -0.8
+        },
+        "1": {
+          "gpu": 0
+        }
+      },
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "Sharp periphery while aiming",
+            "Tiny GPU saving"
+          ],
+          "cons": [
+            "Less cinematic ADS"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Cinematic focus effect when aiming"
+          ],
+          "cons": [
+            "Blurs the edge of the screen where flanks come from"
+          ]
+        }
+      }
+    },
+    {
+      "id": "weapon_motion_blur",
+      "label": "Weapon Motion Blur",
+      "menu": "Video > Advanced",
+      "confidence": "community",
+      "profsave_key": "GstRender.MotionBlurWeapon",
+      "type": "slider",
+      "min": 0,
+      "max": 100,
+      "unit": "%",
+      "presets": {
+        "esports": 0,
+        "competitive": 0,
+        "balanced": 0,
+        "quality": 0
+      },
+      "always": 0,
+      "impact": {
+        "gpu": 1,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Separate from world Motion Blur in the real profile. Zero in every preset for the same reason: it smears your sight picture during fast turns. Key confirmed in a real BF6 profile.",
+      "cost": {
+        "interpolate": true,
+        "0": {
+          "gpu": -0.8
+        },
+        "100": {
+          "gpu": 0
+        }
+      },
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "Sight picture stays sharp during fast turns"
+          ],
+          "cons": [
+            "Weapon movement looks less smooth"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Smoother-looking weapon sway"
+          ],
+          "cons": [
+            "Blurs your sights while you are trying to aim"
+          ]
+        }
+      },
+      "profsave_scale": 0.01,
+      "profsave_note": "Stored in PROFSAVE_profile as 0.0-1.0; the app shows and writes it as a percentage."
+    },
+    {
+      "id": "ctrl_aim_assist_slowdown",
+      "label": "Infantry Aim Assist Slowdown",
+      "menu": "Controls > Controller",
+      "confidence": "unverified",
+      "type": "slider",
+      "min": 0,
+      "max": 100,
+      "unit": "%",
+      "presets": {
+        "esports": 100,
+        "competitive": 100,
+        "balanced": 100,
+        "quality": 100
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "How much the stick slows down as your crosshair passes over a target. Every Season 5 guide pairs Aim Assist 100 with Slowdown 100. Unverified: taken from community Season 5 controller guides, not confirmed against a real BF6 profile (the reference dump has no GstInput keys), so it is never written automatically - set it by hand under Controls.",
+      "personal": true,
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "Faster, unassisted sweeps across targets"
+          ],
+          "cons": [
+            "Harder to stop exactly on target"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Crosshair settles on targets more easily"
+          ],
+          "cons": [
+            "Can feel sticky when switching between targets"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ctrl_trigger_max_input",
+      "label": "Trigger Max Input Threshold (LT/RT)",
+      "menu": "Controls > Controller",
+      "confidence": "unverified",
+      "type": "slider",
+      "min": 0,
+      "max": 100,
+      "unit": "%",
+      "presets": {
+        "esports": 100,
+        "competitive": 100,
+        "balanced": 100,
+        "quality": 100
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "How far the trigger travels before it counts as fully pressed. Guides keep 100 and use Trigger Deadzone 0 for speed instead; lower it only if you use hair-trigger stops and want full press with less travel. Unverified: taken from community Season 5 controller guides, not confirmed against a real BF6 profile (the reference dump has no GstInput keys), so it is never written automatically - set it by hand under Controls.",
+      "personal": true,
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "Full press reached with less travel"
+          ],
+          "cons": [
+            "Partial-press behaviour (e.g. vehicle throttle) gets coarser"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Full analogue range on the trigger"
+          ],
+          "cons": [
+            "Needs a full pull to register a full press"
+          ]
+        }
+      }
     }
   ],
-  "unverified_settings_note": "A setting marked confidence: 'unverified' is a plausible addition based on common Frostbite/FPS conventions - proposed by BF6 Tuner's own tooling, not sourced from a confirmed BF6 profile dump or menu screenshot. Each one deliberately has no profsave_key, so it is never written to your profile automatically (see database.py/writer.py's 'never invent PROFSAVE keys' rule) - it only ever shows up as a recommendation with reasoning, for you to set by hand and verify. Promote an entry out of 'unverified' by confirming its real menu wording and PROFSAVE key against an actual game install, then add profsave_key and drop the confidence field.",
+  "unverified_settings_note": "A setting marked confidence: 'unverified' is a plausible addition based on common Frostbite/FPS conventions - proposed by BF6 Tuner's own tooling, not sourced from a confirmed BF6 profile dump or menu screenshot. Each one deliberately has no profsave_key, so it is never written to your profile automatically (see database.py/writer.py's 'never invent PROFSAVE keys' rule) - it only ever shows up as a recommendation with reasoning, for you to set by hand and verify. Promote an entry out of 'unverified' by confirming its real menu wording and PROFSAVE key against an actual game install, then add profsave_key and drop the confidence field. The controller entries and Zoom Sensitivity Coefficient come from community Season 5 guides rather than this app's own tooling, but the same rule applies: no profile key until a real profile shows one.",
   "cost_model": {
     "units": "Values are percent of total GPU or CPU frame time relative to the setting's baseline option, and GB for vram.",
     "baseline": "The option whose entry is all zeroes. For quality tiers that is normally 'High'.",

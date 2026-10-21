@@ -13,12 +13,12 @@ a = Analysis(
     pathex=[str(ROOT / "src")],
     binaries=[],
     # The settings database ships as plain JSON - see database.py's module
-    # docstring for why it's not encrypted. keybind_concepts.json is a
-    # separate dataset (see keybinds.py) - not one of database.py's
-    # DATASETS, but bundled the same way for the same reason.
+    # docstring for why it's not encrypted. keybind_concepts.json and
+    # profile_key_baseline.json are separate datasets (see keybinds.py and
+    # profile_audit.py) - not database.py's DATASETS, but bundled the same way.
     datas=[(str(ROOT / "data" / f"{name}.json"), "data") for name in
            ("gpu_db", "cpu_db", "cfg_commands", "ingame_settings", "system_tweaks",
-            "keybind_concepts")],
+            "keybind_concepts", "profile_key_baseline")],
     hiddenimports=["bf6tuner._build_info"],
     hookspath=[],
     runtime_hooks=[],
