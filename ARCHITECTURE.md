@@ -376,6 +376,57 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-10-21 (62) — Season 6 check, and graphics keys the real profile had all along
+
+The user asked about Season 6 and for anything still missing from Season 5.
+**Season 6 is not out:** EA hasn't announced a date or any content. The
+only third-party estimates put it in January to March 2027. So nothing was
+added for it. When it lands, the `profile_audit` card (entry 60) is the
+first place a new setting will show up.
+
+For Season 5, the best source was not a guide but
+`examples/PROFSAVEbf6mp_profile` diffed against the database. Five real
+graphics keys were never modelled, and they now write
+(`confidence: "community"`):
+
+- `GstRender.SunShadowQuality`: presets 0/1/2/3
+- `GstRender.LocalLightShadowQuality`: presets 0/0/1/3
+- `GstRender.VolumetricQuality`: presets 0/1/2/3
+- `GstRender.WeaponDOF`: off except Quality
+- `GstRender.MotionBlurWeapon`: `always: 0`, with `profsave_scale` 0.01 like world motion blur
+
+For the three quality keys, the Low to Ultra range (0 to 3) is assumed to
+match every other quality key in the same file; the notes say so. Cost
+curves are modelled like those of their neighbours. Predicted FPS per preset
+is unchanged, because preset costs only shift the estimate when overridden.
+Two more controller entries were added, both unverified and with no key:
+Aim Assist Slowdown 100 and Trigger Max Input Threshold 100. 71 settings,
+10 new tests (298 total).
+
+Not modelled, deliberately: `ShadowFiltering` and `ShaderQuality` (the
+option ranges are unknown), along with HUD colours, subtitles and VOIP
+(not tuning).
+
+**Found, not fixed - needs a decision.** Twelve settings carry a
+`profsave_key` that the real profile does not contain. `profsave_plan` only
+rewrites existing keys, so on a real install these are recommended but
+silently never applied:
+
+- `low_latency` → `UltraLowLatency`. The file has vendor-specific
+  `NvidiaLowLatency`/`AMDLowLatency`/`IntelLowLatency`.
+- `hdr` → `HDREnabled`. The file has `HighDynamicRangeMode`.
+- `music_volume` → `MusicVolume`. The file has `Volume_Music`, 0.0-1.0.
+- `master_volume` → `MasterVolume`. The file has `Volume`.
+- `water_quality`, `vegetation_quality`, `sky_quality`, `decal_quality` and
+  `ray_tracing` have no counterpart in the file at all. `sky_quality`
+  ("Sky / Volumetric Cloud Quality") probably describes what the real
+  `VolumetricQuality` controls, so it should be retired once that is
+  confirmed. Until then, the two show up as separate rows.
+- The three mouse keys: the file has no `GstInput` keys, as noted in entry 61.
+
+Fixing these means remapping keys and value scales (the low-latency one is
+per-vendor), so it is left for an explicit go-ahead.
+
 ### 2026-10-21 (61) — Season 5 controller and aiming settings, hand-set only
 
 User asked to add the configuration missing compared with the YouTube video

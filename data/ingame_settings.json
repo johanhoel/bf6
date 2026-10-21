@@ -3232,6 +3232,407 @@
           ]
         }
       }
+    },
+    {
+      "id": "sun_shadow_quality",
+      "label": "Sun Shadow Quality",
+      "menu": "Video > Advanced",
+      "confidence": "community",
+      "profsave_key": "GstRender.SunShadowQuality",
+      "type": "enum",
+      "options": [
+        {
+          "value": 0,
+          "label": "Low"
+        },
+        {
+          "value": 1,
+          "label": "Medium"
+        },
+        {
+          "value": 2,
+          "label": "High"
+        },
+        {
+          "value": 3,
+          "label": "Ultra"
+        }
+      ],
+      "presets": {
+        "esports": 0,
+        "competitive": 1,
+        "balanced": 2,
+        "quality": 3
+      },
+      "impact": {
+        "gpu": 4,
+        "cpu": 2,
+        "vram": 1
+      },
+      "note": "Resolution and range of shadows cast by the sun - a separate key from Shadow Quality in the real profile. Outdoors this is most of what you see as shadow, and it costs CPU as well as GPU because every cascade is another pass over the scene. Medium keeps the long shadows that give away players on rooftops and ridgelines. Key confirmed in a real BF6 profile; the Low-Ultra range is assumed to match the other quality keys in the same file.",
+      "cost": {
+        "0": {
+          "gpu": -7.0,
+          "cpu": -2.5
+        },
+        "1": {
+          "gpu": -3.5,
+          "cpu": -1.0
+        },
+        "2": {
+          "gpu": 0,
+          "cpu": 0
+        },
+        "3": {
+          "gpu": 5.0,
+          "cpu": 1.5
+        }
+      },
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "Large outdoor frame rate gain, on CPU as well as GPU"
+          ],
+          "cons": [
+            "Blurrier, shorter-range sun shadows; Low can drop the shadow that gives away a player before you see them"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Crisp long-range shadows"
+          ],
+          "cons": [
+            "One of the costliest settings outdoors"
+          ]
+        }
+      }
+    },
+    {
+      "id": "local_light_shadow_quality",
+      "label": "Local Light Shadow Quality",
+      "menu": "Video > Advanced",
+      "confidence": "community",
+      "profsave_key": "GstRender.LocalLightShadowQuality",
+      "type": "enum",
+      "options": [
+        {
+          "value": 0,
+          "label": "Low"
+        },
+        {
+          "value": 1,
+          "label": "Medium"
+        },
+        {
+          "value": 2,
+          "label": "High"
+        },
+        {
+          "value": 3,
+          "label": "Ultra"
+        }
+      ],
+      "presets": {
+        "esports": 0,
+        "competitive": 0,
+        "balanced": 1,
+        "quality": 3
+      },
+      "impact": {
+        "gpu": 3,
+        "cpu": 1,
+        "vram": 1
+      },
+      "note": "Shadows from lamps, muzzle flashes and fires rather than the sun. Matters indoors and at night, rarely decides a fight, and costs frames exactly where fights get busy. Key confirmed in a real BF6 profile; the Low-Ultra range is assumed to match the other quality keys in the same file.",
+      "cost": {
+        "0": {
+          "gpu": -5.0,
+          "cpu": -1.0
+        },
+        "1": {
+          "gpu": -2.5,
+          "cpu": -0.5
+        },
+        "2": {
+          "gpu": 0,
+          "cpu": 0
+        },
+        "3": {
+          "gpu": 4.0,
+          "cpu": 0.8
+        }
+      },
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "Steadier frame rate in interiors and explosion-heavy fights"
+          ],
+          "cons": [
+            "Flatter-looking indoor lighting"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Richer interior and night lighting"
+          ],
+          "cons": [
+            "Costs frames in the busiest moments"
+          ]
+        }
+      }
+    },
+    {
+      "id": "volumetric_quality",
+      "label": "Volumetric Quality",
+      "menu": "Video > Advanced",
+      "confidence": "community",
+      "profsave_key": "GstRender.VolumetricQuality",
+      "type": "enum",
+      "options": [
+        {
+          "value": 0,
+          "label": "Low"
+        },
+        {
+          "value": 1,
+          "label": "Medium"
+        },
+        {
+          "value": 2,
+          "label": "High"
+        },
+        {
+          "value": 3,
+          "label": "Ultra"
+        }
+      ],
+      "presets": {
+        "esports": 0,
+        "competitive": 1,
+        "balanced": 2,
+        "quality": 3
+      },
+      "impact": {
+        "gpu": 4,
+        "cpu": 0,
+        "vram": 1
+      },
+      "note": "Resolution of fog, smoke and light shafts. Expensive at high resolutions because it is a full-screen effect. Lower settings render the same smoke at lower resolution - it does not reliably make smoke see-through, so lower it for frames, not for an edge. Key confirmed in a real BF6 profile; the Low-Ultra range is assumed to match the other quality keys in the same file.",
+      "cost": {
+        "0": {
+          "gpu": -6.0
+        },
+        "1": {
+          "gpu": -3.0
+        },
+        "2": {
+          "gpu": 0
+        },
+        "3": {
+          "gpu": 5.0,
+          "vram": 0.2
+        }
+      },
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "Big GPU saving at 1440p and 4K"
+          ],
+          "cons": [
+            "Blockier fog and light shafts"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Smooth, detailed fog and god rays"
+          ],
+          "cons": [
+            "Full-screen cost that grows with resolution"
+          ]
+        }
+      }
+    },
+    {
+      "id": "weapon_dof",
+      "label": "Weapon Depth of Field",
+      "menu": "Video > Advanced",
+      "confidence": "community",
+      "profsave_key": "GstRender.WeaponDOF",
+      "type": "bool",
+      "presets": {
+        "esports": 0,
+        "competitive": 0,
+        "balanced": 0,
+        "quality": 1
+      },
+      "impact": {
+        "gpu": 1,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Blurs the edges of the screen while aiming down sights. Off for anything competitive - it blurs exactly the periphery where flanking players appear. Key confirmed in a real BF6 profile.",
+      "cost": {
+        "0": {
+          "gpu": -0.8
+        },
+        "1": {
+          "gpu": 0
+        }
+      },
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "Sharp periphery while aiming",
+            "Tiny GPU saving"
+          ],
+          "cons": [
+            "Less cinematic ADS"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Cinematic focus effect when aiming"
+          ],
+          "cons": [
+            "Blurs the edge of the screen where flanks come from"
+          ]
+        }
+      }
+    },
+    {
+      "id": "weapon_motion_blur",
+      "label": "Weapon Motion Blur",
+      "menu": "Video > Advanced",
+      "confidence": "community",
+      "profsave_key": "GstRender.MotionBlurWeapon",
+      "type": "slider",
+      "min": 0,
+      "max": 100,
+      "unit": "%",
+      "presets": {
+        "esports": 0,
+        "competitive": 0,
+        "balanced": 0,
+        "quality": 0
+      },
+      "always": 0,
+      "impact": {
+        "gpu": 1,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "Separate from world Motion Blur in the real profile. Zero in every preset for the same reason: it smears your sight picture during fast turns. Key confirmed in a real BF6 profile.",
+      "cost": {
+        "interpolate": true,
+        "0": {
+          "gpu": -0.8
+        },
+        "100": {
+          "gpu": 0
+        }
+      },
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "Sight picture stays sharp during fast turns"
+          ],
+          "cons": [
+            "Weapon movement looks less smooth"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Smoother-looking weapon sway"
+          ],
+          "cons": [
+            "Blurs your sights while you are trying to aim"
+          ]
+        }
+      },
+      "profsave_scale": 0.01,
+      "profsave_note": "Stored in PROFSAVE_profile as 0.0-1.0; the app shows and writes it as a percentage."
+    },
+    {
+      "id": "ctrl_aim_assist_slowdown",
+      "label": "Infantry Aim Assist Slowdown",
+      "menu": "Controls > Controller",
+      "confidence": "unverified",
+      "type": "slider",
+      "min": 0,
+      "max": 100,
+      "unit": "%",
+      "presets": {
+        "esports": 100,
+        "competitive": 100,
+        "balanced": 100,
+        "quality": 100
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "How much the stick slows down as your crosshair passes over a target. Every Season 5 guide pairs Aim Assist 100 with Slowdown 100. Unverified: taken from community Season 5 controller guides, not confirmed against a real BF6 profile (the reference dump has no GstInput keys), so it is never written automatically - set it by hand under Controls.",
+      "personal": true,
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "Faster, unassisted sweeps across targets"
+          ],
+          "cons": [
+            "Harder to stop exactly on target"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Crosshair settles on targets more easily"
+          ],
+          "cons": [
+            "Can feel sticky when switching between targets"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ctrl_trigger_max_input",
+      "label": "Trigger Max Input Threshold (LT/RT)",
+      "menu": "Controls > Controller",
+      "confidence": "unverified",
+      "type": "slider",
+      "min": 0,
+      "max": 100,
+      "unit": "%",
+      "presets": {
+        "esports": 100,
+        "competitive": 100,
+        "balanced": 100,
+        "quality": 100
+      },
+      "impact": {
+        "gpu": 0,
+        "cpu": 0,
+        "vram": 0
+      },
+      "note": "How far the trigger travels before it counts as fully pressed. Guides keep 100 and use Trigger Deadzone 0 for speed instead; lower it only if you use hair-trigger stops and want full press with less travel. Unverified: taken from community Season 5 controller guides, not confirmed against a real BF6 profile (the reference dump has no GstInput keys), so it is never written automatically - set it by hand under Controls.",
+      "personal": true,
+      "tradeoff": {
+        "lower": {
+          "pros": [
+            "Full press reached with less travel"
+          ],
+          "cons": [
+            "Partial-press behaviour (e.g. vehicle throttle) gets coarser"
+          ]
+        },
+        "raise": {
+          "pros": [
+            "Full analogue range on the trigger"
+          ],
+          "cons": [
+            "Needs a full pull to register a full press"
+          ]
+        }
+      }
     }
   ],
   "unverified_settings_note": "A setting marked confidence: 'unverified' is a plausible addition based on common Frostbite/FPS conventions - proposed by BF6 Tuner's own tooling, not sourced from a confirmed BF6 profile dump or menu screenshot. Each one deliberately has no profsave_key, so it is never written to your profile automatically (see database.py/writer.py's 'never invent PROFSAVE keys' rule) - it only ever shows up as a recommendation with reasoning, for you to set by hand and verify. Promote an entry out of 'unverified' by confirming its real menu wording and PROFSAVE key against an actual game install, then add profsave_key and drop the confidence field. The controller entries and Zoom Sensitivity Coefficient come from community Season 5 guides rather than this app's own tooling, but the same rule applies: no profile key until a real profile shows one.",

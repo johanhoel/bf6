@@ -898,7 +898,8 @@ CONTROLLER_IDS = (
     "zoom_sensitivity_coefficient",
     "ctrl_left_center_deadzone", "ctrl_left_axial_deadzone", "ctrl_left_max_input",
     "ctrl_right_center_deadzone", "ctrl_right_axial_deadzone", "ctrl_right_max_input",
-    "ctrl_trigger_deadzone", "ctrl_aim_assist", "ctrl_vibration",
+    "ctrl_trigger_deadzone", "ctrl_trigger_max_input",
+    "ctrl_aim_assist", "ctrl_aim_assist_slowdown", "ctrl_vibration",
 )
 
 
@@ -938,3 +939,63 @@ def test_season5_deadzone_defaults(db):
     assert values["ctrl_trigger_deadzone"] == 0
     assert values["zoom_sensitivity_coefficient"] == 178
     assert values["ctrl_vibration"] == 0
+
+
+# -- graphics keys present in the real profile but not modelled until now ----
+# Found by diffing examples/PROFSAVEbf6mp_profile against the database while
+# checking Season 5 coverage. The keys are real, so these write.
+
+REAL_PROFILE = Path(__file__).resolve().parents[1] / "examples" / "PROFSAVEbf6mp_profile"
+
+CONFIRMED_NEW = {
+    "sun_shadow_quality": "GstRender.SunShadowQuality",
+    "local_light_shadow_quality": "GstRender.LocalLightShadowQuality",
+    "volumetric_quality": "GstRender.VolumetricQuality",
+    "weapon_dof": "GstRender.WeaponDOF",
+    "weapon_motion_blur": "GstRender.MotionBlurWeapon",
+}
+
+
+def _real_profile_keys() -> dict[str, str]:
+    from bf6tuner import profile_audit
+    return profile_audit.parse_keys(REAL_PROFILE.read_text(encoding="utf-8", errors="ignore"))
+
+
+@pytest.mark.parametrize("setting_id,key", CONFIRMED_NEW.items())
+def test_new_graphics_settings_use_keys_from_the_real_profile(db, setting_id, key):
+    setting = db.setting(setting_id)
+    assert setting["profsave_key"] == key
+    assert setting.get("confidence") != "unverified"
+    assert key in _real_profile_keys()
+
+
+def test_new_graphics_settings_are_written_at_quality(db):
+    """The reference profile has all of these at their lowest value, so the
+    Quality preset must plan a change for each multi-level one."""
+    existing = _real_profile_keys()
+    rec = recommend(db, make_profile(), Target(preset="quality"))
+    planned = {key: new for key, _, new in writer.profsave_plan(rec, existing)}
+    for key in ("GstRender.SunShadowQuality", "GstRender.VolumetricQuality",
+                "GstRender.LocalLightShadowQuality", "GstRender.WeaponDOF"):
+        assert key in planned, key
+    assert "GstRender.MotionBlurWeapon" not in planned, "already 0 in the real profile"
+
+
+def test_weapon_motion_blur_is_written_in_profile_units(db):
+    """Shown as 0-100 %, stored as 0.0-1.0, like world motion blur."""
+    rec = recommend(db, make_profile(), Target(preset="competitive"))
+    plan = writer.profsave_plan(rec, {"GstRender.MotionBlurWeapon": "1.000000"})
+    assert ("GstRender.MotionBlurWeapon", "1.000000", "0.000000") in plan
+
+    forced = recommend(db, make_profile(), Target(preset="competitive"),
+                       overrides={"weapon_motion_blur": 50})
+    plan = writer.profsave_plan(forced, {"GstRender.MotionBlurWeapon": "0.000000"})
+    assert ("GstRender.MotionBlurWeapon", "0.000000", "0.500000") in plan
+
+
+def test_esports_drops_sun_shadows_to_low(db):
+    rec = recommend(db, make_profile(), Target(preset="esports"))
+    values = {c.setting_id: c.value for c in rec.settings}
+    assert values["sun_shadow_quality"] == 0
+    assert values["volumetric_quality"] == 0
+    assert values["weapon_dof"] == 0

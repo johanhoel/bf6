@@ -64,7 +64,7 @@ reset individually or all at once.
 Both tables group their rows by category (Video &gt; Basic/Advanced/Ray Tracing,
 Controls, Audio for settings; CPU Threading, Render Pipeline, Frame Pacing and so
 on for `User.cfg`), with a search box, a jump-to-category dropdown, and
-expand/collapse-all — the settings list alone is 64 rows and only getting longer.
+expand/collapse-all — the settings list alone is 71 rows and only getting longer.
 The in-game settings table also has an **Impact column**: each row is tagged
 with which hardware resource(s) it meaningfully costs — GPU (teal), CPU (pink),
 VRAM (purple) — colour-matched to a legend above the table, so scanning down
@@ -348,7 +348,7 @@ time (see "About the database" above for why they aren't encrypted):
 | `gpu_db.json` | 95 GPUs — VRAM, relative BF6 performance index, DLSS/FSR/XeSS support, frame-generation capability, ray tracing strength |
 | `cpu_db.json` | 61 CPUs — core/thread counts, hybrid topology, X3D and chiplet layout, estimated CPU-limited FPS, plus a fallback heuristic for anything not listed |
 | `cfg_commands.json` | 45 `User.cfg` commands, each with a **confidence level** (`documented` / `community` / `legacy`), a **risk level**, a hardware policy, an explanation, and pros/cons for the ones actually emitted |
-| `ingame_settings.json` | 64 in-game settings with per-preset values, VRAM gates, a per-option **cost curve** in percent of frame time, and **directional pros and cons** for raising or lowering each one. 14 are marked `confidence: unverified` — view/LOD distance, weapon FOV, display mode, and camera shake are plausible additions never sourced from a confirmed profile, and the Season 5 controller settings (stick center/axial deadzones and max input thresholds, trigger deadzone, aim assist, vibration) plus Zoom Sensitivity Coefficient come from community Season 5 guides; none carry a profile key and none are ever written automatically, so they show up as hand-set recommendations. Sharpening, Reflection Quality, and Texture Filtering used to be on that list too, until a real profile confirmed their keys (`SharpnessSlider`/`ReflectionQuality`/`TextureFiltering`) and they were promoted to actually write. Also confirmed from a real profile: Undergrowth Quality and Significance Quality (CPU/GPU-saving additions), the background/menu frame-rate-limiter family (recommended on unconditionally since it only ever throttles the game while tabbed out or in a menu), a separate Screen Space Reflections toggle, Vehicle Field of View, two never-written FOV-scale toggles, and a Dynamic Resolution Scaling family (Resolution Scale, DRS enable/floor/target — the target is computed to always match Frame Rate Limit) |
+| `ingame_settings.json` | 71 in-game settings with per-preset values, VRAM gates, a per-option **cost curve** in percent of frame time, and **directional pros and cons** for raising or lowering each one. 16 are marked `confidence: unverified` — view/LOD distance, weapon FOV, display mode, and camera shake are plausible additions never sourced from a confirmed profile, and the Season 5 controller settings (stick center/axial deadzones and max input thresholds, trigger deadzone and max input threshold, aim assist and aim assist slowdown, vibration) plus Zoom Sensitivity Coefficient come from community Season 5 guides; none carry a profile key and none are ever written automatically, so they show up as hand-set recommendations. Sharpening, Reflection Quality, and Texture Filtering used to be on that list too, until a real profile confirmed their keys (`SharpnessSlider`/`ReflectionQuality`/`TextureFiltering`) and they were promoted to actually write. Also confirmed from a real profile: Undergrowth Quality and Significance Quality (CPU/GPU-saving additions), the background/menu frame-rate-limiter family (recommended on unconditionally since it only ever throttles the game while tabbed out or in a menu), a separate Screen Space Reflections toggle, Vehicle Field of View, two never-written FOV-scale toggles, Sun Shadow Quality, Local Light Shadow Quality, Volumetric Quality, Weapon Depth of Field and Weapon Motion Blur (found in the real profile while checking Season 5 coverage), and a Dynamic Resolution Scaling family (Resolution Scale, DRS enable/floor/target — the target is computed to always match Frame Rate Limit) |
 | `system_tweaks.json` | 14 OS/BIOS/driver checks with trigger conditions |
 | `keybind_concepts.json` | Key-binding decode data — see "Key bindings" below |
 | `profile_key_baseline.json` | Every settings key in a real profile captured before Season 5 — the reference for "New settings keys" below |
@@ -424,7 +424,7 @@ only thing that needs changing.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests -q          # 288 tests
+python -m pytest tests -q          # 298 tests
 PYTHONPATH=src python -m bf6tuner --preset competitive   # CLI, runs on Linux too
 ```
 
