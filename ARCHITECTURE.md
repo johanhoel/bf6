@@ -400,6 +400,9 @@ Remapped to real keys (`confidence: "community"`):
   assumed from the SDR profile's 0.
 - **`music_volume`** → `GstAudio.Volume_Music` and **`master_volume`** →
   `GstAudio.Volume`, both with `profsave_scale` 0.01 (stored as 0.0-1.0).
+  Now that music volume actually writes, Competitive dropped from 10 % to 0 %.
+  At 10 %, the plan would have turned music *up* on the real profile, which
+  sits at 0.
 
 Made unverified, with the key removed: `water_quality`,
 `vegetation_quality`, `sky_quality`, `decal_quality` and `ray_tracing` have
