@@ -689,6 +689,16 @@ def _evaluate_tweaks(
 # Entry point
 # --------------------------------------------------------------------------
 
+def _profsave_key_for(setting: dict[str, Any], gpu: dict[str, Any]) -> str | None:
+    """Most settings have one key; low latency is stored once per GPU vendor
+    (NvidiaLowLatency/AMDLowLatency/IntelLowLatency in a real profile), so
+    the key written is the one for the GPU in this machine."""
+    by_vendor = setting.get("profsave_key_by_vendor")
+    if by_vendor:
+        return by_vendor.get(gpu.get("vendor", ""))
+    return setting.get("profsave_key")
+
+
 def _coerce_override(setting: dict[str, Any], value: Any) -> Any:
     """Bring a stored override back into the type the setting uses, clamped to
     the range the setting actually supports.
@@ -781,7 +791,7 @@ def recommend(
         if setting.get("never_write") and setting.get("presets", {}).get(preset) == "keep":
             settings.append(SettingChoice(
                 setting["id"], setting["label"], setting["menu"], "keep", "Leave as-is",
-                setting["note"], setting.get("profsave_key"), personal=True,
+                setting["note"], _profsave_key_for(setting, gpu), personal=True,
                 profsave_scale=float(setting.get("profsave_scale", 1.0)),
             ))
             continue
@@ -849,7 +859,7 @@ def recommend(
                 elif predicted < 60:
                     reason = f"Off - frame generation needs a solid real frame rate underneath it, and you are predicted at {int(predicted)} FPS."
         elif setting["id"] == "low_latency":
-            if not gpu.get("reflex") and gpu.get("vendor") != "amd":
+            if not gpu.get("reflex") and gpu.get("vendor") not in ("amd", "intel"):
                 value = 0
                 reason = "Not available on this GPU."
         elif setting["id"] == "hdr":
@@ -870,7 +880,7 @@ def recommend(
         settings.append(SettingChoice(
             setting_id=setting["id"], label=setting["label"], menu=setting["menu"],
             value=value, display=_label_for(setting, value), reason=reason,
-            profsave_key=setting.get("profsave_key"), personal=bool(setting.get("personal")),
+            profsave_key=_profsave_key_for(setting, gpu), personal=bool(setting.get("personal")),
             profsave_scale=float(setting.get("profsave_scale", 1.0)),
         ))
 
@@ -892,6 +902,10 @@ def recommend(
             if setting.get("never_write") or choice.value == "keep":
                 continue
             wanted = _coerce_override(setting, overrides[choice.setting_id])
+            # 'On + Boost' exists for NVIDIA only; AMD and Intel stop at On.
+            cap = setting.get("max_by_vendor", {}).get(gpu.get("vendor", ""))
+            if cap is not None and isinstance(wanted, (int, float)):
+                wanted = min(wanted, cap)
             if wanted == choice.value:
                 continue
             before = cost_for(setting, choice.value)

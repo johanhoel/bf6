@@ -376,6 +376,47 @@ tests as of the last README update).
 Add a dated entry for every session of work — what changed, why, and
 anything the next session needs to know. Most recent first.
 
+### 2026-10-21 (63) — Twelve settings that never applied, fixed
+
+The user said go ahead on the twelve dead keys found in entry 62. Every
+setting now writes a key that `examples/PROFSAVEbf6mp_profile` really
+contains, or has no key and is `confidence: "unverified"`.
+`test_every_profsave_key_exists_in_the_real_profile` fails if that slips
+again.
+
+Remapped to real keys (`confidence: "community"`):
+
+- **`low_latency`** is stored per GPU vendor in the real profile, so the
+  setting now has `profsave_key_by_vendor` (nvidia/amd/intel →
+  `NvidiaLowLatency`/`AMDLowLatency`/`IntelLowLatency`) instead of
+  `profsave_key`. `engine._profsave_key_for()` resolves it from the matched
+  GPU, and `SettingChoice.profsave_key` carries the resolved key. That
+  covers both write and compare, because `compare.read_current_settings`
+  already reads keys from the choices. An unknown vendor gets no key, so
+  nothing is written. `max_by_vendor` caps overrides at 1 on AMD and Intel
+  ("On + Boost" is NVIDIA-only). Intel now counts as low-latency capable
+  (XeLL); before this, it was forced Off.
+- **`hdr`** → `GstRender.HighDynamicRangeMode`. 0 = off and 1 = on is
+  assumed from the SDR profile's 0.
+- **`music_volume`** → `GstAudio.Volume_Music` and **`master_volume`** →
+  `GstAudio.Volume`, both with `profsave_scale` 0.01 (stored as 0.0-1.0).
+
+Made unverified, with the key removed: `water_quality`,
+`vegetation_quality`, `sky_quality`, `decal_quality` and `ray_tracing` have
+no counterpart in the file. `mouse_sensitivity`, `ads_sensitivity` and
+`mouse_acceleration` have no `GstInput` keys in it. The notes say so and
+point at the real neighbour where there is one: Undergrowth for vegetation,
+Volumetric for sky, and `RaytracingAmbientOcclusion` for ray tracing. That
+last one was not adopted because its menu exposure is unconfirmed.
+
+**Correction to entry 44.** That entry said
+`GstRender.VegetationQuality` was confirmed alongside `UndergrowthQuality`.
+The committed dump has no such key. The two tests that encoded the claim now
+assert the opposite, and the undergrowth note no longer cites it.
+
+Test fixture: `test_compare.ULTRA_PROFSAVE` now uses the real keys. It
+produces the same 8 changes as before. 16 new tests (314 total).
+
 ### 2026-10-21 (62) — Season 6 check, and graphics keys the real profile had all along
 
 The user asked about Season 6 and for anything still missing from Season 5.
@@ -407,7 +448,7 @@ Not modelled, deliberately: `ShadowFiltering` and `ShaderQuality` (the
 option ranges are unknown), along with HUD colours, subtitles and VOIP
 (not tuning).
 
-**Found, not fixed - needs a decision.** Twelve settings carry a
+**Found, not fixed - needs a decision** (fixed in entry 63). Twelve settings carry a
 `profsave_key` that the real profile does not contain. `profsave_plan` only
 rewrites existing keys, so on a real install these are recommended but
 silently never applied:

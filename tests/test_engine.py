@@ -638,16 +638,16 @@ def test_main_frame_limiter_enable_is_confirmed_key_and_always_on(db):
     assert enable.profsave_key == "GstRender.FrameRateLimiterEnable"
 
 
-def test_undergrowth_quality_is_distinct_from_vegetation_quality(db):
-    """A real profile confirms GstRender.UndergrowthQuality and
-    GstRender.VegetationQuality are two separate keys, not the same slider
-    surfaced twice."""
+def test_undergrowth_quality_is_the_confirmed_ground_cover_key(db):
+    """The real profile has GstRender.UndergrowthQuality and no
+    VegetationQuality key at all - an earlier entry claimed both were
+    confirmed, which the committed dump does not support."""
     rec = recommend(db, make_profile(), Target(preset="balanced"))
     undergrowth = next(s for s in rec.settings if s.setting_id == "undergrowth_quality")
     vegetation = next(s for s in rec.settings if s.setting_id == "vegetation_quality")
     assert undergrowth.profsave_key == "GstRender.UndergrowthQuality"
-    assert vegetation.profsave_key == "GstRender.VegetationQuality"
-    assert undergrowth.profsave_key != vegetation.profsave_key
+    assert vegetation.profsave_key is None
+    assert db.setting("vegetation_quality")["confidence"] == "unverified"
 
 
 def test_significance_quality_has_confirmed_profsave_key(db):
@@ -778,11 +778,11 @@ def test_out_of_range_slider_override_is_clamped_before_it_reaches_profsave(db):
 
 # -- new CPU/GPU settings confirmed from the same real profile --------------
 
-def test_vegetation_and_undergrowth_and_reflection_and_ssr_are_distinct_keys(db):
-    """Four pairs the DB used to risk conflating - each confirmed as two
-    separate real keys, not one setting under two names."""
+def test_shadow_undergrowth_reflection_and_ssr_are_distinct_keys(db):
+    """Settings the DB could conflate - each confirmed as a separate real
+    key, not one setting under two names."""
     ids_and_keys = {
-        "vegetation_quality": "GstRender.VegetationQuality",
+        "sun_shadow_quality": "GstRender.SunShadowQuality",
         "undergrowth_quality": "GstRender.UndergrowthQuality",
         "reflection_quality": "GstRender.ReflectionQuality",
         "screen_space_reflections": "GstRender.ScreenSpaceReflections",
@@ -999,3 +999,76 @@ def test_esports_drops_sun_shadows_to_low(db):
     assert values["sun_shadow_quality"] == 0
     assert values["volumetric_quality"] == 0
     assert values["weapon_dof"] == 0
+
+
+# -- every key the app writes exists in a real profile -----------------------
+# Twelve settings used to point at keys the real profile does not contain
+# (UltraLowLatency, HDREnabled, MusicVolume, VegetationQuality, ...).
+# profsave_plan only rewrites existing keys, so on a real install they were
+# recommended and silently never applied. This guards against it coming back.
+
+def test_every_profsave_key_exists_in_the_real_profile(db):
+    real = _real_profile_keys()
+    for setting in db.settings:
+        keys = [setting.get("profsave_key")] + list(setting.get("profsave_key_by_vendor", {}).values())
+        for key in filter(None, keys):
+            assert key in real, f"{setting['id']} points at {key}, which no real profile has"
+
+
+AMD = dict(gpu_name="AMD Radeon RX 7800 XT", gpu_vendor="amd", vram_gb=16.0)
+INTEL = dict(gpu_name="Intel Arc B580", gpu_vendor="intel", vram_gb=12.0)
+
+
+@pytest.mark.parametrize("gpu,key", [
+    ({}, "GstRender.NvidiaLowLatency"),
+    (AMD, "GstRender.AMDLowLatency"),
+    (INTEL, "GstRender.IntelLowLatency"),
+])
+def test_low_latency_writes_the_key_for_this_gpu_vendor(db, gpu, key):
+    rec = recommend(db, make_profile(**gpu), Target(preset="competitive"))
+    choice = next(c for c in rec.settings if c.setting_id == "low_latency")
+    assert choice.profsave_key == key and choice.value == 1
+    existing = {k: "0" for k in ("GstRender.NvidiaLowLatency", "GstRender.AMDLowLatency",
+                                 "GstRender.IntelLowLatency")}
+    plan = writer.profsave_plan(rec, existing)
+    assert [(k, new) for k, _, new in plan if "LowLatency" in k] == [(key, "1")]
+
+
+def test_on_plus_boost_is_nvidia_only(db):
+    nvidia = recommend(db, make_profile(), Target(preset="competitive"), overrides={"low_latency": 2})
+    amd = recommend(db, make_profile(**AMD), Target(preset="competitive"), overrides={"low_latency": 2})
+    assert next(c for c in nvidia.settings if c.setting_id == "low_latency").value == 2
+    assert next(c for c in amd.settings if c.setting_id == "low_latency").value == 1
+
+
+def test_low_latency_has_no_key_for_an_unknown_gpu_vendor(db):
+    rec = recommend(db, make_profile(gpu_name="Some Unknown GPU", gpu_vendor="unknown"),
+                    Target(preset="competitive"))
+    assert next(c for c in rec.settings if c.setting_id == "low_latency").profsave_key is None
+
+
+def test_music_volume_is_written_to_the_real_key_in_profile_units(db):
+    rec = recommend(db, make_profile(), Target(preset="balanced"))
+    plan = writer.profsave_plan(rec, {"GstAudio.Volume_Music": "0.800000"})
+    assert ("GstAudio.Volume_Music", "0.800000", "0.400000") in plan
+    competitive = recommend(db, make_profile(), Target(preset="competitive"))
+    assert writer.profsave_plan(competitive, {"GstAudio.Volume_Music": "0.000000"}) == []
+
+
+def test_hdr_uses_the_real_profile_key(db):
+    rec = recommend(db, make_profile(), Target(preset="quality", hdr_display=True))
+    choice = next(c for c in rec.settings if c.setting_id == "hdr")
+    assert choice.profsave_key == "GstRender.HighDynamicRangeMode" and choice.value == 1
+    plan = writer.profsave_plan(rec, {"GstRender.HighDynamicRangeMode": "0"})
+    assert ("GstRender.HighDynamicRangeMode", "0", "1") in plan
+
+
+KEYLESS_NOW = ("water_quality", "vegetation_quality", "sky_quality", "decal_quality",
+               "ray_tracing", "mouse_sensitivity", "ads_sensitivity", "mouse_acceleration")
+
+
+@pytest.mark.parametrize("setting_id", KEYLESS_NOW)
+def test_settings_without_a_real_key_are_unverified(db, setting_id):
+    setting = db.setting(setting_id)
+    assert setting["confidence"] == "unverified"
+    assert setting.get("profsave_key") is None
